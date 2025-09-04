@@ -30,6 +30,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'portfolio',
     'authentication',
+    'channels',
+    
 ]
 
 MIDDLEWARE = [
@@ -62,6 +64,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'stocktracker.wsgi.application'
+ASGI_APPLICATION = 'stocktracker.asgi.application'
 
 # Database
 DATABASES = {
@@ -177,3 +180,22 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/0",  # use db 0 for now
+    }
+}
+
+
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("localhost", 6379)],  # Redis running in Docker
+        },
+    },
+}

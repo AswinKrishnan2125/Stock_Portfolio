@@ -47,12 +47,35 @@ const Charts = () => {
   const fetchData = async () => {
     try {
       // Fetch mock stock prices
-      const pricesResponse = await axios.get('/mock/prices/')
-      const prices = pricesResponse.data.prices
+      // const pricesResponse = await axios.get('/mock/prices/')
+      // const prices = pricesResponse.data.prices
 
-      // Generate mock historical data
-      const historicalData = generateHistoricalData(prices)
-      setStockData(historicalData)
+      const socket = new WebSocket("ws://127.0.0.1:8000/ws/prices/")
+
+      socket.onopen = () => {
+        console.log("WebSocket connected")
+      }
+
+      socket.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      console.log("Live price update:", data)
+
+      // Assume backend sends { prices: [...] }
+      if (data.prices) {
+        const historicalData = generateHistoricalData(data.prices)
+        setStockData(historicalData)
+        }
+      }
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error)
+      }
+
+      socket.onclose = () => {
+        console.log("WebSocket closed")
+      }
+
+  
 
       // Fetch portfolio data
       const portfoliosResponse = await axios.get('/portfolios/')
@@ -65,6 +88,9 @@ const Charts = () => {
         gainLoss: portfolio.total_gain_loss || 0
       }))
       setPortfolioData(portfolioChartData)
+
+      // Cleanup on unmount
+      return () => socket.close()
 
     } catch (error) {
       console.error('Error fetching chart data:', error)

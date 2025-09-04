@@ -5,6 +5,7 @@ import random
 from datetime import datetime, timedelta
 import requests
 from django.conf import settings 
+from django.core.cache import cache
 
 
 @api_view(['GET'])
@@ -13,6 +14,14 @@ def mock_prices(request):
     """Mock real-time stock prices"""
     symbols = ['AAPL', 'GOOGL']
     
+    cached_data = cache.get("stock_prices")
+    if cached_data:
+        return Response({
+            'prices': cached_data,
+            'last_updated': datetime.now().isoformat(),
+             'cached': True  # helps you know if data came from cache
+        })
+
     prices = []
     for symbol in symbols:
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={settings.ALPHAVANTAGE_API_KEY}"
@@ -36,10 +45,13 @@ def mock_prices(request):
                 'error': 'Data not available'
             })
 
+    cache.set("stock_prices", prices, timeout=60)
     return Response({
         'prices': prices,
-        'last_updated': datetime.now().isoformat()
+        'last_updated': datetime.now().isoformat(),
+        'cached': False  # helps you know if data came from cache
     })
+
 
 
 @api_view(['GET'])
