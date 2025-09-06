@@ -6,6 +6,11 @@ from datetime import datetime, timedelta
 import requests
 from django.conf import settings 
 from django.core.cache import cache
+import time
+from django.http import JsonResponse
+from rest_framework.permissions import AllowAny
+
+from .models import HistoricalPrice
 
 
 @api_view(['GET'])
@@ -51,6 +56,212 @@ def mock_prices(request):
         'last_updated': datetime.now().isoformat(),
         'cached': False  # helps you know if data came from cache
     })
+
+
+
+# @api_view(["GET"])
+# @permission_classes([AllowAny])
+# def historical_prices(request):
+#     symbol = request.GET.get("symbol", "AAPL").upper()
+#     range_param = request.GET.get("range", "1M")
+
+#     # Step 1: Try fetching from DB
+#     qs = HistoricalPrice.objects.filter(symbol=symbol).order_by("date")
+#     print(qs.exists())
+#     print(qs.query)
+#     if qs.exists():
+#         print('Data from DB')
+#         candles = [
+#             {
+#                 "date": hp.date.strftime("%Y-%m-%d"),
+#                 "open": hp.open,
+#                 "high": hp.high,
+#                 "low": hp.low,
+#                 "close": hp.close,
+#                 "volume": hp.volume,
+#             }
+#             for hp in qs
+#         ]
+#     else:
+#         # Step 2: Fetch from Alpha Vantage
+#         print('Data from API')
+#         url = (
+#             f"https://www.alphavantage.co/query"
+#             f"?function=TIME_SERIES_DAILY"
+#             f"&symbol={symbol}"
+#             f"&outputsize=compact"
+#             f"&apikey={settings.ALPHAVANTAGE_API_KEY}"
+#         )
+#         r = requests.get(url, timeout=15)
+#         data = r.json()
+
+#         if "Time Series (Daily)" not in data:
+#             return JsonResponse({"prices": {symbol: []}, "error": "No data"}, status=200)
+
+#         time_series = data["Time Series (Daily)"]
+#         candles = []
+
+#         for date_str, values in time_series.items():
+#             date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+#             hp, created = HistoricalPrice.objects.get_or_create(
+#                 symbol=symbol,
+#                 date=date_obj,
+#                 defaults={
+#                     "open": float(values["1. open"]),
+#                     "high": float(values["2. high"]),
+#                     "low": float(values["3. low"]),
+#                     "close": float(values["4. close"]),
+#                     "volume": int(values["5. volume"]),
+#                 },
+#             )
+#             candles.append({
+#                 "date": date_str,
+#                 "open": hp.open,
+#                 "high": hp.high,
+#                 "low": hp.low,
+#                 "close": hp.close,
+#                 "volume": hp.volume,
+#             })
+
+#         candles.sort(key=lambda x: x["date"])
+
+#     # Step 3: Apply range filter
+#     if range_param == "1M":
+#         candles = candles[-30:]
+#     elif range_param == "3M":
+#         candles = candles[-90:]
+#     elif range_param == "6M":
+#         candles = candles[-180:]
+
+#     return JsonResponse({"prices": {symbol: candles}})
+
+
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def historical_prices(request):
+    symbol = request.GET.get("symbol", "AAPL").upper()
+    range_param = request.GET.get("range", "1M")
+
+    # Always keep 100 days in DB
+    MAX_DAYS = 100  
+
+    qs = HistoricalPrice.objects.filter(symbol=symbol).order_by("date")
+
+    if qs.exists():
+        print("Data from DB")
+
+        latest_date_in_db = qs.last().date
+        today = datetime.today().date()
+
+        if latest_date_in_db < today:
+            # Fetch the most recent day from Alpha Vantage
+            url = (
+                f"https://www.alphavantage.co/query"
+                f"?function=TIME_SERIES_DAILY"
+                f"&symbol={symbol}"
+                f"&outputsize=compact"
+                f"&apikey={settings.ALPHAVANTAGE_API_KEY}"
+            )
+            r = requests.get(url, timeout=15)
+            data = r.json()
+
+            if "Time Series (Daily)" in data:
+                time_series = data["Time Series (Daily)"]
+
+                # Find the most recent trading day from API
+                latest_date_str = max(time_series.keys())
+                values = time_series[latest_date_str]
+                date_obj = datetime.strptime(latest_date_str, "%Y-%m-%d").date()
+
+                if date_obj > latest_date_in_db:
+                    # Insert the new day
+                    HistoricalPrice.objects.create(
+                        symbol=symbol,
+                        date=date_obj,
+                        open=float(values["1. open"]),
+                        high=float(values["2. high"]),
+                        low=float(values["3. low"]),
+                        close=float(values["4. close"]),
+                        volume=int(values["5. volume"]),
+                    )
+
+                    # --- Delete only the oldest record if count > 100 ---
+                    count = HistoricalPrice.objects.filter(symbol=symbol).count()
+                    if count > MAX_DAYS:
+                        oldest = (
+                            HistoricalPrice.objects.filter(symbol=symbol)
+                            .order_by("date")
+                            .first()
+                        )
+                        if oldest:
+                            oldest.delete()
+
+        # Refresh queryset
+        qs = HistoricalPrice.objects.filter(symbol=symbol).order_by("date")
+
+    else:
+        print("Data from API (initial load)")
+        url = (
+            f"https://www.alphavantage.co/query"
+            f"?function=TIME_SERIES_DAILY"
+            f"&symbol={symbol}"
+            f"&outputsize=compact"
+            f"&apikey={settings.ALPHAVANTAGE_API_KEY}"
+        )
+        r = requests.get(url, timeout=15)
+        data = r.json()
+
+        if "Time Series (Daily)" not in data:
+            return JsonResponse({"prices": {symbol: []}, "error": "No data"}, status=200)
+
+        time_series = data["Time Series (Daily)"]
+
+        # Insert up to 100 days (most recent first)
+        for date_str, values in list(time_series.items())[:MAX_DAYS]:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+            HistoricalPrice.objects.get_or_create(
+                symbol=symbol,
+                date=date_obj,
+                defaults={
+                    "open": float(values["1. open"]),
+                    "high": float(values["2. high"]),
+                    "low": float(values["3. low"]),
+                    "close": float(values["4. close"]),
+                    "volume": int(values["5. volume"]),
+                },
+            )
+
+        qs = HistoricalPrice.objects.filter(symbol=symbol).order_by("date")
+
+    # Build response candles
+    candles = [
+        {
+            "date": hp.date.strftime("%Y-%m-%d"),
+            "open": hp.open,
+            "high": hp.high,
+            "low": hp.low,
+            "close": hp.close,
+            "volume": hp.volume,
+        }
+        for hp in qs
+    ]
+
+    # Range filter for frontend (but DB always has 100)
+    if range_param == "1M":
+        candles = candles[-30:]
+    elif range_param == "3M":
+        candles = candles[-90:]
+    elif range_param == "6M":
+        candles = candles[-180:]
+
+    return JsonResponse({"prices": {symbol: candles}})
+
+
+
+
+
 
 
 

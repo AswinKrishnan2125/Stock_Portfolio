@@ -52,3 +52,21 @@ class Stock(models.Model):
     class Meta:
         ordering = ['-created_at']
         unique_together = ['portfolio', 'symbol']
+
+
+
+class HistoricalPrice(models.Model):
+    symbol = models.CharField(max_length=20, db_index=True)
+    date = models.DateField(db_index=True)
+    open = models.FloatField()
+    high = models.FloatField()
+    low = models.FloatField()
+    close = models.FloatField()
+    volume = models.BigIntegerField()
+
+    class Meta:
+        unique_together = ("symbol", "date")  # prevent duplicates
+        ordering = ["date"]
+
+    def __str__(self):
+        return f"{self.symbol} - {self.date}"

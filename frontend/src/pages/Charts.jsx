@@ -31,51 +31,83 @@ import {
   Cell
 } from 'recharts'
 import axios from 'axios'
+import { use } from 'react'
 
 const Charts = () => {
   const [stockData, setStockData] = useState([])
   const [portfolioData, setPortfolioData] = useState([])
+  const [portfolioError, setPortfolioError] = useState(''); 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedChart, setSelectedChart] = useState('line')
   const [selectedTimeframe, setSelectedTimeframe] = useState('1M')
+  const [historicalData, setHistoricalData] = useState({})
 
   useEffect(() => {
     fetchData()
   }, [])
 
+  
+
+useEffect(()=>{
+  console.log(stockData);
+  
+},[stockData]);
+
+useEffect(() => {
+  let socket;
+  let alive = true;
+
+  const connect = () => {
+    socket = new WebSocket('ws://127.0.0.1:8000/ws/prices/');
+
+    socket.onopen = () => {
+      console.log('WebSocket connected');
+      setLoading(false);
+    }
+
+    socket.onmessage = (event) => {
+    const data = JSON.parse(event.data)
+    if (data.prices) {
+      // Deduplicate by symbol
+      const uniquePrices = Object.values(
+        data.prices.reduce((acc, stock) => {
+          acc[stock.symbol] = stock
+          return acc
+        }, {})
+      )
+      setStockData(uniquePrices);
+      setLoading(false);
+      // console.log(stockData);
+      
+    }
+  }
+
+
+    socket.onerror = (err) => {
+      console.error('WebSocket error:', err);
+      // Don’t flip global error; try to reconnect if closed.
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket closed');
+      if (alive) {
+        // simple backoff reconnect
+        setTimeout(connect, 2000);
+      }
+    };
+  };
+
+  connect();
+  return () => {
+    alive = false;
+    if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+  };
+}, []);
+
+
   const fetchData = async () => {
     try {
-      // Fetch mock stock prices
-      // const pricesResponse = await axios.get('/mock/prices/')
-      // const prices = pricesResponse.data.prices
-
-      const socket = new WebSocket("ws://127.0.0.1:8000/ws/prices/")
-
-      socket.onopen = () => {
-        console.log("WebSocket connected")
-      }
-
-      socket.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      console.log("Live price update:", data)
-
-      // Assume backend sends { prices: [...] }
-      if (data.prices) {
-        const historicalData = generateHistoricalData(data.prices)
-        setStockData(historicalData)
-        }
-      }
-
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error)
-      }
-
-      socket.onclose = () => {
-        console.log("WebSocket closed")
-      }
-
-  
 
       // Fetch portfolio data
       const portfoliosResponse = await axios.get('/portfolios/')
@@ -90,15 +122,71 @@ const Charts = () => {
       setPortfolioData(portfolioChartData)
 
       // Cleanup on unmount
-      return () => socket.close()
+      // return () => socket.close()
 
     } catch (error) {
       console.error('Error fetching chart data:', error)
-      setError('Failed to load chart data')
-    } finally {
-      setLoading(false)
+      // setError('Failed to load chart data')
+      setPortfolioError('Failed to load portfolio data')
     }
   }
+
+
+
+
+  useEffect(() => {
+    fetchHistory()
+  }, [selectedTimeframe])
+
+
+  //working but only for one stock
+//   const fetchHistory = async () => {
+//   try {
+//     const symbol = stockData[0]?.symbol || "AAPL";
+//     const historicalResponse = await axios.get(
+//       `/historical/prices/?symbol=${symbol}&range=${selectedTimeframe}`
+//     );
+
+//     const prices = historicalResponse.data.prices[symbol]; // directly grab the array
+//     console.log("Historical Response:", historicalResponse.data);
+//     console.log("Prices:", prices);
+
+//     setHistoricalData({ [symbol]: prices }); // store { symbol: array }
+
+//     console.log("Timeframe changed to:", selectedTimeframe);
+//   } catch (error) {
+//     console.error("Error fetching historical data:", error);
+//   }
+// };
+
+
+
+const symbolsList = ["AAPL", "MSFT", "GOOGL"]; // you can expand this list
+
+const fetchHistory = async () => {
+  try {
+    let allData = {};
+
+    for (const symbol of symbolsList) {
+      const response = await axios.get(
+        `/historical/prices/?symbol=${symbol}&range=${selectedTimeframe}`
+      );
+
+      const prices = response.data.prices[symbol];
+      allData[symbol] = prices || [];
+    }
+
+    setHistoricalData(allData);
+    console.log("Historical Data:", allData);
+  } catch (error) {
+    console.error("Error fetching historical data:", error);
+  }
+};
+
+
+
+
+
 
   const generateHistoricalData = (prices) => {
     const data = []
@@ -140,79 +228,96 @@ const Charts = () => {
     return <Alert severity="error">{error}</Alert>
   }
 
-  const renderChart = () => {
-    switch (selectedChart) {
-      case 'line':
-        return (
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={stockData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {stockData.length > 0 && Object.keys(stockData[0]).filter(key => key !== 'date' && key !== 'timestamp').map((symbol, index) => (
-                <Line
-                  key={symbol}
-                  type="monotone"
-                  dataKey={symbol}
-                  stroke={COLORS[index % COLORS.length]}
-                  strokeWidth={2}
-                  dot={false}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        )
-      
-      case 'area':
-        return (
-          <ResponsiveContainer width="100%" height={400}>
-            <AreaChart data={stockData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {stockData.length > 0 && Object.keys(stockData[0]).filter(key => key !== 'date' && key !== 'timestamp').slice(0, 3).map((symbol, index) => (
-                <Area
-                  key={symbol}
-                  type="monotone"
-                  dataKey={symbol}
-                  stackId="1"
-                  stroke={COLORS[index % COLORS.length]}
-                  fill={COLORS[index % COLORS.length]}
-                  fillOpacity={0.6}
-                />
-              ))}
-            </AreaChart>
-          </ResponsiveContainer>
-        )
-      
-      case 'bar':
-        return (
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={stockData.slice(-7)}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {stockData.length > 0 && Object.keys(stockData[0]).filter(key => key !== 'date' && key !== 'timestamp').slice(0, 4).map((symbol, index) => (
-                <Bar
-                  key={symbol}
-                  dataKey={symbol}
-                  fill={COLORS[index % COLORS.length]}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        )
-      
-      default:
-        return null
-    }
+const renderChart = () => {
+  if (!historicalData || Object.keys(historicalData).length === 0) return null;
+
+  const symbols = Object.keys(historicalData);
+  const chartData = [];
+
+  // Build dataset for recharts
+  historicalData[symbols[0]].forEach((day, idx) => {
+    const entry = { date: day.date };
+    symbols.forEach(sym => {
+      entry[sym] = historicalData[sym][idx]?.close;
+    });
+    chartData.push(entry);
+  });
+
+  console.log("Chart data:", chartData);
+
+  switch (selectedChart) {
+    case "line":
+      return (
+        <ResponsiveContainer width="100%" height={400}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            {symbols.map((symbol, index) => (
+              <Line
+                key={symbol}
+                type="monotone"
+                dataKey={symbol}
+                stroke={COLORS[index % COLORS.length]}
+                strokeWidth={2}
+                dot={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      );
+
+    case "area":
+      return (
+        <ResponsiveContainer width="100%" height={400}>
+          <AreaChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            {symbols.map((symbol, index) => (
+              <Area
+                key={symbol}
+                type="monotone"
+                dataKey={symbol}
+                stackId="1"
+                stroke={COLORS[index % COLORS.length]}
+                fill={COLORS[index % COLORS.length]}
+                fillOpacity={0.6}
+              />
+            ))}
+          </AreaChart>
+        </ResponsiveContainer>
+      );
+
+    case "bar":
+      return (
+        <ResponsiveContainer width="100%" height={400}>
+          <BarChart data={chartData.slice(-7)}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            {symbols.map((symbol, index) => (
+              <Bar
+                key={symbol}
+                dataKey={symbol}
+                fill={COLORS[index % COLORS.length]}
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      );
+
+    default:
+      return null;
   }
+};
+
 
   return (
     <Box>
@@ -315,30 +420,29 @@ const Charts = () => {
               Market Summary
             </Typography>
             <Grid container spacing={2}>
-              {stockData.length > 0 && Object.keys(stockData[0]).filter(key => key !== 'date' && key !== 'timestamp').map((symbol, index) => {
-                const latestPrice = stockData[stockData.length - 1][symbol]
-                const previousPrice = stockData[stockData.length - 2]?.[symbol] || latestPrice
-                const change = latestPrice - previousPrice
-                const changePercent = (change / previousPrice) * 100
-                
-                return (
-                  <Grid item xs={12} sm={6} md={3} key={symbol}>
-                    <Box p={2} border="1px solid #e0e0e0" borderRadius={1}>
-                      <Typography variant="h6">{symbol}</Typography>
-                      <Typography variant="h5" color="primary">
-                        ${latestPrice.toFixed(2)}
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        color={change >= 0 ? 'success.main' : 'error.main'}
-                      >
-                        {change >= 0 ? '+' : ''}{change.toFixed(2)} ({changePercent.toFixed(2)}%)
-                      </Typography>
-                    </Box>
-                  </Grid>
-                )
-              })}
+              {stockData.map((stock) => (
+                <Grid item xs={12} sm={6} md={3} key={stock.symbol}>
+                  <Box p={2} border="1px solid #e0e0e0" borderRadius={1}>
+                    <Typography variant="h6">{stock.symbol}</Typography>
+                    <Typography variant="h5" color="primary">
+                      {typeof stock.latestPrice === "number"
+                        ? `$${stock.latestPrice.toFixed(2)}`
+                        : "N/A"}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color={stock.change >= 0 ? "success.main" : "error.main"}
+                    >
+                      {typeof stock.change === "number" && typeof stock.changePercent === "number"
+                        ? `${stock.change >= 0 ? "+" : ""}${stock.change.toFixed(2)} (${stock.changePercent.toFixed(2)}%)`
+                        : "N/A"}
+                    </Typography>
+                  </Box>
+                </Grid>
+              ))}
+
             </Grid>
+
           </Paper>
         </Grid>
       </Grid>
