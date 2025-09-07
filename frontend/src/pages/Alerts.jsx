@@ -1,31 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Grid,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Chip,
-  Alert,
-  CircularProgress,
-  Switch,
-  FormControlLabel,
-  Divider
+  Box, Typography, Card, CardContent, Grid, Button, Dialog, DialogTitle,
+  DialogContent, DialogActions, TextField, Select, MenuItem, FormControl,
+  InputLabel, List, ListItem, ListItemText, ListItemSecondaryAction,
+  IconButton, Chip, Alert, CircularProgress, Switch, FormControlLabel, Divider
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -48,14 +26,28 @@ const Alerts = () => {
     enabled: true
   })
 
+  // Load alerts on mount
   useEffect(() => {
     fetchAlerts()
   }, [])
 
+  useEffect(() => {
+  const interval = setInterval(async () => {
+    try {
+      await axios.post("/alerts/check/");
+      fetchAlerts(); // refresh UI with triggered status
+    } catch (err) {
+      console.error("Auto check failed", err);
+    }
+  }, 15000); // check every 15s
+  return () => clearInterval(interval);
+}, []);
+
+
   const fetchAlerts = async () => {
     try {
-      const response = await axios.get('/mock/alerts/')
-      setAlerts(response.data.alerts || [])
+      const response = await axios.get('/alerts/')
+      setAlerts(response.data) // assuming backend returns a list of alerts
     } catch (error) {
       console.error('Error fetching alerts:', error)
       setError('Failed to load alerts')
@@ -66,17 +58,8 @@ const Alerts = () => {
 
   const handleCreateAlert = async () => {
     try {
-      // In a real implementation, this would create an alert in the backend
-      const newAlert = {
-        id: Date.now(),
-        ...alertForm,
-        current_price: 0,
-        triggered: false,
-        created_at: new Date().toISOString(),
-        triggered_at: null
-      }
-      
-      setAlerts([...alerts, newAlert])
+      const response = await axios.post('/alerts/', alertForm)
+      setAlerts([...alerts, response.data]) // add new alert from backend
       setDialogOpen(false)
       setAlertForm({
         symbol: '',
@@ -93,7 +76,7 @@ const Alerts = () => {
   const handleDeleteAlert = async (alertId) => {
     if (window.confirm('Are you sure you want to delete this alert?')) {
       try {
-        // In a real implementation, this would delete the alert from the backend
+        await axios.delete(`/alerts/${alertId}/`)
         setAlerts(alerts.filter(alert => alert.id !== alertId))
       } catch (error) {
         console.error('Error deleting alert:', error)
@@ -102,12 +85,15 @@ const Alerts = () => {
     }
   }
 
-  const handleToggleAlert = async (alertId) => {
+  const handleToggleAlert = async (alertId, enabled) => {
     try {
+      const updated = alerts.find(a => a.id === alertId)
+      const response = await axios.put(`/alerts/${alertId}/`, {
+        ...updated,
+        enabled: !enabled
+      })
       setAlerts(alerts.map(alert => 
-        alert.id === alertId 
-          ? { ...alert, enabled: !alert.enabled }
-          : alert
+        alert.id === alertId ? response.data : alert
       ))
     } catch (error) {
       console.error('Error toggling alert:', error)
@@ -115,17 +101,14 @@ const Alerts = () => {
     }
   }
 
-  const getAlertTypeIcon = (type) => {
-    return type === 'price_above' ? <TrendingUp color="success" /> : <TrendingDown color="error" />
-  }
+  const getAlertTypeIcon = (type) =>
+    type === 'price_above' ? <TrendingUp color="success" /> : <TrendingDown color="error" />
 
-  const getAlertTypeText = (type) => {
-    return type === 'price_above' ? 'Price Above' : 'Price Below'
-  }
+  const getAlertTypeText = (type) =>
+    type === 'price_above' ? 'Price Above' : 'Price Below'
 
-  const getAlertStatusColor = (triggered) => {
-    return triggered ? 'error' : 'default'
-  }
+  const getAlertStatusColor = (triggered) =>
+    triggered ? 'error' : 'default'
 
   if (loading) {
     return (
@@ -172,26 +155,26 @@ const Alerts = () => {
                         <ListItemText
                           primary={
                             <Box display="flex" alignItems="center" gap={1}>
-                              <Typography variant="h6">{alert.symbol}</Typography>
-                              <Chip 
-                                label={getAlertTypeText(alert.type)} 
-                                size="small" 
-                                color="primary" 
+                              <Typography variant="h6" >{alert.symbol}</Typography>
+                              <Chip
+                                label={getAlertTypeText(alert.type)}
+                                size="small"
+                                color="primary"
                                 variant="outlined"
                               />
-                              <Chip 
-                                label={alert.triggered ? 'Triggered' : 'Active'} 
-                                size="small" 
+                              <Chip
+                                label={alert.triggered ? 'Triggered' : 'Active'}
+                                size="small"
                                 color={getAlertStatusColor(alert.triggered)}
                               />
                             </Box>
                           }
                           secondary={
                             <Box>
-                              <Typography variant="body2">
+                              <Typography variant="body2" component="span">
                                 Target: ${alert.target_price} | Current: ${alert.current_price || 'N/A'}
                               </Typography>
-                              <Typography variant="caption" color="textSecondary">
+                              <Typography variant="caption" component="div" color="textSecondary">
                                 Created: {new Date(alert.created_at).toLocaleDateString()}
                                 {alert.triggered_at && ` | Triggered: ${new Date(alert.triggered_at).toLocaleDateString()}`}
                               </Typography>
@@ -203,7 +186,7 @@ const Alerts = () => {
                             control={
                               <Switch
                                 checked={alert.enabled}
-                                onChange={() => handleToggleAlert(alert.id)}
+                                onChange={() => handleToggleAlert(alert.id, alert.enabled)}
                                 color="primary"
                               />
                             }
@@ -245,49 +228,11 @@ const Alerts = () => {
                   </Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
-                  <Typography>Triggered Today:</Typography>
+                  <Typography>Triggered:</Typography>
                   <Typography variant="h6" color="error">
                     {alerts.filter(alert => alert.triggered).length}
                   </Typography>
                 </Box>
-              </Box>
-            </CardContent>
-          </Card>
-
-          <Card sx={{ mt: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Quick Actions
-              </Typography>
-              <Box display="flex" flexDirection="column" gap={1}>
-                <Button
-                  variant="outlined"
-                  startIcon={<NotificationsIcon />}
-                  onClick={() => setDialogOpen(true)}
-                  fullWidth
-                >
-                  Create New Alert
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    // In a real implementation, this would test all alerts
-                    alert('Testing all alerts...')
-                  }}
-                  fullWidth
-                >
-                  Test All Alerts
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    // In a real implementation, this would clear triggered alerts
-                    setAlerts(alerts.map(alert => ({ ...alert, triggered: false })))
-                  }}
-                  fullWidth
-                >
-                  Clear Triggered
-                </Button>
               </Box>
             </CardContent>
           </Card>
@@ -349,8 +294,8 @@ const Alerts = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button 
-            onClick={handleCreateAlert} 
+          <Button
+            onClick={handleCreateAlert}
             variant="contained"
             disabled={!alertForm.symbol || !alertForm.target_price}
           >

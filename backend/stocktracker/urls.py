@@ -11,6 +11,7 @@ urlpatterns = [
     path('api/auth/', include('authentication.urls')),
     path('api/', include('portfolio.urls')),
     path('api/mock/', include('portfolio.mock_urls')),
+    path('api/alerts/', include('alerts.urls')),
 ]
 
 if settings.DEBUG:
