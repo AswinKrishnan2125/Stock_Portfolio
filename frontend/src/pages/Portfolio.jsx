@@ -57,6 +57,11 @@ const Portfolio = () => {
   })
   const [editingStock, setEditingStock] = useState(null)
 
+  // Portfolio stats
+  const totalValue = portfolios.reduce((sum, portfolio) => sum + (portfolio.total_value || 0), 0)
+  const totalGainLoss = portfolios.reduce((sum, portfolio) => sum + (portfolio.total_gain_loss || 0), 0)
+  const totalStocks = portfolios.reduce((sum, portfolio) => sum + (portfolio.stocks?.length || 0), 0)
+
   useEffect(() => {
     fetchPortfolios()
   }, [])

@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/', include('portfolio.urls')),
     path('api/mock/', include('portfolio.mock_urls')),
     path('api/alerts/', include('alerts.urls')),
+    path('api/recommendation', include('portfolio.mock_urls')),
 ]
 
 if settings.DEBUG:

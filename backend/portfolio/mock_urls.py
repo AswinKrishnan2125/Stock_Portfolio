@@ -5,5 +5,5 @@ urlpatterns = [
     path('prices/', mock_prices, name='mock_prices'),
     path("historical/prices/", historical_prices, name="historical_prices"),
     path('alerts/', mock_alerts, name='mock_alerts'),
-    path('recommendations/', mock_recommendations, name='mock_recommendations'),
+    path('', mock_recommendations, name='mock_recommendations'),
 ]

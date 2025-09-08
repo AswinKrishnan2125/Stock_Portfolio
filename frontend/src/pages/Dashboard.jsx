@@ -1,214 +1,134 @@
 import React, { useState, useEffect } from 'react'
 import {
   Grid,
-  Card,
-  CardContent,
   Typography,
   Box,
   CircularProgress,
   Alert,
-  Paper
+  Paper,
+  Button
 } from '@mui/material'
-import {
-  TrendingUp,
-  TrendingDown,
-  AccountBalance,
-  ShowChart
-} from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 
 const Dashboard = () => {
-  const [portfolios, setPortfolios] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const { token } = useAuth()
-  // console.log("hjdsfhj");
+  const [search, setSearch] = useState("")
+  const [recommendations, setRecommendations] = useState([])
+  const [recommendLoading, setRecommendLoading] = useState(false)
+  const [recommendError, setRecommendError] = useState("")
+  const [interestedStocks, setInterestedStocks] = useState([])
+  const [selectedStock, setSelectedStock] = useState(null)
+  const [stockLoading, setStockLoading] = useState(false)
+  const [stockError, setStockError] = useState("")
 
   useEffect(() => {
-    fetchPortfolios()
+    fetchInterestedStocks()
   }, [])
 
-  const fetchPortfolios = async () => {
+  const fetchInterestedStocks = async () => {
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
-      const response = await fetch(`${baseURL}/portfolios/`, {
+      const response = await fetch(`${baseURL}/interested-stocks/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       })
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch portfolios')
-      }
-      
+      if (!response.ok) throw new Error('Failed to fetch interested stocks')
       const data = await response.json()
-      setPortfolios(data.results || data)
-    } catch (error) {
-      console.error('Error fetching portfolios:', error)
-      setError('Failed to load portfolio data')
-    } finally {
-      setLoading(false)
+      setInterestedStocks(data.results || data)
+    } catch (err) {
+      // handle error
     }
   }
 
-  const totalValue = portfolios.reduce((sum, portfolio) => sum + (portfolio.total_value || 0), 0)
-  const totalGainLoss = portfolios.reduce((sum, portfolio) => sum + (portfolio.total_gain_loss || 0), 0)
-  const totalStocks = portfolios.reduce((sum, portfolio) => sum + (portfolio.stocks?.length || 0), 0)
-
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
-    )
+  const fetchRecommendations = async (query) => {
+    setRecommendLoading(true)
+    setRecommendError("")
+    try {
+      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+      const response = await fetch(`${baseURL}/recommendations/?search=${query}`)
+      if (!response.ok) throw new Error('Failed to fetch recommendations')
+      const data = await response.json()
+      setRecommendations(data.results || data)
+    } catch (err) {
+      setRecommendError('Failed to load recommendations')
+    } finally {
+      setRecommendLoading(false)
+    }
   }
 
-  if (error) {
-    return <Alert severity="error">{error}</Alert>
+  const fetchStockData = async (symbol) => {
+    setStockLoading(true)
+    setStockError("")
+    try {
+      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+      const response = await fetch(`${baseURL}/stocks/${symbol}/`)
+      if (!response.ok) throw new Error('Failed to fetch stock data')
+      const data = await response.json()
+      setSelectedStock(data)
+    } catch (err) {
+      setStockError('Failed to load stock data')
+    } finally {
+      setStockLoading(false)
+    }
   }
+
+  // UI
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
-      
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <AccountBalance color="primary" sx={{ mr: 2 }} />
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    Total Portfolio Value
-                  </Typography>
-                  <Typography variant="h5">
-                    ${totalValue.toLocaleString()}
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+      {/* <Typography variant="h4" gutterBottom>Dashboard</Typography> */}
+      <Box mb={2}>
+        <input
+          type="text"
+          placeholder="Search stocks..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ padding: '8px', width: '300px', fontSize: '16px' }}
+        />
+        <Button variant="contained" sx={{ ml: 2 }} onClick={() => fetchRecommendations(search)} disabled={recommendLoading}>
+          {recommendLoading ? 'Searching...' : 'Search'}
+        </Button>
+      </Box>
+      <Box mb={4}>
+        <Typography variant="h6">Interested Stocks</Typography>
+        <Grid container spacing={2}>
+          {interestedStocks.map(stock => (
+            <Grid item xs={12} sm={6} md={3} key={stock.symbol}>
+              <Paper sx={{ p: 2, cursor: 'pointer' }} onClick={() => fetchStockData(stock.symbol)}>
+                <Typography variant="h6">{stock.symbol}</Typography>
+                <Typography variant="body2">{stock.name}</Typography>
+              </Paper>
+            </Grid>
+          ))}
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                {totalGainLoss >= 0 ? (
-                  <TrendingUp color="success" sx={{ mr: 2 }} />
-                ) : (
-                  <TrendingDown color="error" sx={{ mr: 2 }} />
-                )}
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    Total Gain/Loss
-                  </Typography>
-                  <Typography 
-                    variant="h5" 
-                    color={totalGainLoss >= 0 ? 'success.main' : 'error.main'}
-                  >
-                    ${totalGainLoss.toLocaleString()}
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+      </Box>
+      {/* <Box mb={4}>
+        <Typography variant="h6">Recommendations</Typography>
+        {recommendError && <Alert severity="error">{recommendError}</Alert>}
+        <Grid container spacing={2}>
+          {recommendations.map(rec => (
+            <Grid item xs={12} sm={6} md={3} key={rec.symbol}>
+              <Paper sx={{ p: 2, cursor: 'pointer' }} onClick={() => fetchStockData(rec.symbol)}>
+                <Typography variant="h6">{rec.symbol}</Typography>
+                <Typography variant="body2">{rec.name}</Typography>
+              </Paper>
+            </Grid>
+          ))}
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <ShowChart color="primary" sx={{ mr: 2 }} />
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    Total Stocks
-                  </Typography>
-                  <Typography variant="h5">
-                    {totalStocks}
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <AccountBalance color="primary" sx={{ mr: 2 }} />
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    Portfolios
-                  </Typography>
-                  <Typography variant="h5">
-                    {portfolios.length}
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Portfolios
-            </Typography>
-            {portfolios.length === 0 ? (
-              <Typography color="textSecondary">
-                No portfolios found. Create your first portfolio to get started!
-              </Typography>
-            ) : (
-              portfolios.slice(0, 3).map((portfolio) => (
-                <Box key={portfolio.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                  <Typography variant="h6">{portfolio.name}</Typography>
-                  <Typography color="textSecondary" variant="body2">
-                    {portfolio.description || 'No description'}
-                  </Typography>
-                  <Box display="flex" justifyContent="space-between" mt={1}>
-                    <Typography variant="body2">
-                      Value: ${(portfolio.total_value || 0).toLocaleString()}
-                    </Typography>
-                    <Typography 
-                      variant="body2" 
-                      color={(portfolio.total_gain_loss || 0) >= 0 ? 'success.main' : 'error.main'}
-                    >
-                      {portfolio.total_gain_loss >= 0 ? '+' : ''}${(portfolio.total_gain_loss || 0).toLocaleString()}
-                    </Typography>
-                  </Box>
-                </Box>
-              ))
-            )}
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Quick Actions
-            </Typography>
-            <Typography variant="body2" color="textSecondary" paragraph>
-              • Add new stocks to your portfolio
-            </Typography>
-            <Typography variant="body2" color="textSecondary" paragraph>
-              • View detailed charts and analytics
-            </Typography>
-            <Typography variant="body2" color="textSecondary" paragraph>
-              • Set up price alerts
-            </Typography>
-            <Typography variant="body2" color="textSecondary" paragraph>
-              • Check AI recommendations
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
+      </Box> */}
+      {stockLoading && <CircularProgress />}
+      {stockError && <Alert severity="error">{stockError}</Alert>}
+      {selectedStock && (
+        <Box p={3} border="1px solid #e0e0e0" borderRadius={2} mb={4}>
+          <Typography variant="h5">{selectedStock.symbol}</Typography>
+          <Typography variant="body2">{selectedStock.name}</Typography>
+          <Typography variant="body2">Price: ${selectedStock.latestPrice}</Typography>
+          <Typography variant="body2">Change: {selectedStock.change} ({selectedStock.changePercent}%)</Typography>
+          {/* Add more stock details as needed */}
+        </Box>
+      )}
     </Box>
   )
 }

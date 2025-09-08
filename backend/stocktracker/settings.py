@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'authentication',
     'channels',
     'alerts',
+    'ai_recommendation',
     
 ]
 

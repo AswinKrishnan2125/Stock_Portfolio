@@ -1,11 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PortfolioViewSet, StockViewSet
+from .views import PortfolioViewSet, StockViewSet, InterestedStockViewSet
 from .mock_views import historical_prices
 
 router = DefaultRouter()
 router.register(r'portfolios', PortfolioViewSet, basename='portfolio')
 router.register(r'stocks', StockViewSet, basename='stock')
+router.register(r'interested-stocks', InterestedStockViewSet, basename='interestedstock')
 
 urlpatterns = [
     path('', include(router.urls)),

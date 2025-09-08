@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Portfolio, Stock
+from .models import Portfolio, Stock, InterestedStock
 
 
 class StockSerializer(serializers.ModelSerializer):
@@ -62,3 +62,9 @@ class StockCreateSerializer(serializers.ModelSerializer):
         portfolio_id = self.context['portfolio_id']
         validated_data['portfolio_id'] = portfolio_id
         return super().create(validated_data)
+
+
+class InterestedStockSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InterestedStock
+        fields = ['id', 'symbol', 'name', 'added_at']

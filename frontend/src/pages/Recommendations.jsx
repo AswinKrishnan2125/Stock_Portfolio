@@ -49,16 +49,30 @@ const Recommendations = () => {
   }, [])
 
   const fetchRecommendations = async () => {
-    try {
-      const response = await axios.get('/mock/recommendations/')
-      setRecommendations(response.data.recommendations || [])
-    } catch (error) {
-      console.error('Error fetching recommendations:', error)
-      setError('Failed to load recommendations')
-    } finally {
-      setLoading(false)
-    }
+  try {
+    setLoading(true)
+    setError('')
+
+    // later you can pull portfolio data from context
+    const portfolio = [
+      { symbol: 'AAPL', shares: 10 },
+      { symbol: 'TSLA', shares: 5 }
+    ]
+
+    const response = await axios.post('/api/recommendations/', {
+      portfolio,
+      filters,
+    })
+
+    setRecommendations(response.data.recommendations || [])
+  } catch (error) {
+    console.error('Error fetching recommendations:', error)
+    setError('Failed to load recommendations')
+  } finally {
+    setLoading(false)
   }
+}
+
 
   const getRecommendationColor = (recommendation) => {
     switch (recommendation) {
