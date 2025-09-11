@@ -312,7 +312,7 @@ def mock_alerts(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def mock_recommendations(request):
     """Mock AI stock recommendations"""
@@ -389,6 +389,31 @@ def mock_recommendations(request):
         }
     ]
     
+    # Optionally apply simple server-side filters if provided via POST
+    if request.method == 'POST':
+        filters = request.data.get('filters', {})
+        rec_type = filters.get('recommendation', 'all')
+        risk_level = filters.get('risk_level', 'all')
+        min_conf = int(filters.get('min_confidence', 0) or 0)
+
+        def passes(rec):
+            if rec_type != 'all' and rec['recommendation'] != rec_type:
+                return False
+            if risk_level != 'all' and rec['risk_level'] != risk_level:
+                return False
+            if rec.get('confidence_score', 0) < min_conf:
+                return False
+            return True
+
+        filtered = [r for r in recommendations if passes(r)]
+        payload = {
+            'recommendations': filtered,
+            'total_recommendations': len(recommendations),
+            'buy_recommendations': len([r for r in recommendations if 'BUY' in r['recommendation']]),
+            'last_updated': datetime.now().isoformat()
+        }
+        return Response(payload)
+
     return Response({
         'recommendations': recommendations,
         'total_recommendations': len(recommendations),

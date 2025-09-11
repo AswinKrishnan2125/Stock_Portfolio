@@ -76,9 +76,15 @@ export const StockLiveProvider = ({ children }) => {
 
     ws.onopen = () => {
       console.log("[Finnhub WS] Connected");
+      console.log("[Finnhub WS] Subscribing:", interestedSymbols);
       // Subscribe to all interested symbols
       interestedSymbols.forEach(symbol => {
-        ws.send(JSON.stringify({ type: "subscribe", symbol }));
+        try {
+          ws.send(JSON.stringify({ type: "subscribe", symbol }));
+          console.log(`[Finnhub WS] -> subscribe ${symbol}`);
+        } catch (e) {
+          console.warn("[Finnhub WS] subscribe send failed for", symbol, e);
+        }
       });
     };
 
@@ -101,6 +107,9 @@ export const StockLiveProvider = ({ children }) => {
             });
             return updated;
           });
+        } else if (data.type && data.type !== "trade") {
+          // Helpful during debugging: ping, info, etc.
+          console.debug("[Finnhub WS] Non-trade message:", data.type);
         }
       } catch (err) {
         // Ignore parse errors
@@ -130,7 +139,8 @@ export const StockLiveProvider = ({ children }) => {
         user_id: userId,
         symbol,
       });
-      // setInterestedSymbols((prev) => [...prev, symbol]);
+  // Update subscriptions immediately so WS can subscribe without waiting for refetch
+  setInterestedSymbols((prev) => (prev.includes(symbol) ? prev : [...prev, symbol]));
       if (userId) {
         // refreshPrices();
       await fetchStockData(userId);

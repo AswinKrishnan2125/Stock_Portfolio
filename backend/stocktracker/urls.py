@@ -9,10 +9,11 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('authentication.urls')),
-    path('api/', include('portfolio.urls')),
+    # More specific API prefixes should come before the generic 'api/' include
+    path('api/recommendations/', include('ai_recommendation.urls')),
     path('api/mock/', include('portfolio.mock_urls')),
     path('api/alerts/', include('alerts.urls')),
-    path('api/recommendation', include('portfolio.mock_urls')),
+    path('api/', include('portfolio.urls')),
     # path('api/search/', include('portfolio.urls')),
 ]
 

@@ -32,9 +32,11 @@ import {
   FilterList
 } from '@mui/icons-material'
 import axios from 'axios'
+import { useStockLive } from '../contexts/StockLiveProvider'
 
 const Recommendations = () => {
   const [recommendations, setRecommendations] = useState([])
+  const [cached, setCached] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filterDialogOpen, setFilterDialogOpen] = useState(false)
@@ -44,27 +46,26 @@ const Recommendations = () => {
     min_confidence: 0
   })
 
+  const { interestedSymbols } = useStockLive()
+
   useEffect(() => {
-    fetchRecommendations()
+    // On navigation, load from cache only (no model call)
+    fetchCachedRecommendations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchRecommendations = async () => {
   try {
     setLoading(true)
     setError('')
-
-    // later you can pull portfolio data from context
-    const portfolio = [
-      { symbol: 'AAPL', shares: 10 },
-      { symbol: 'TSLA', shares: 5 }
-    ]
-
-    const response = await axios.post('/api/recommendations/', {
-      portfolio,
+    // Explicitly trigger model call on refresh
+  const response = await axios.post('/recommendations/', {
+      force: true,
       filters,
     })
 
-    setRecommendations(response.data.recommendations || [])
+  setRecommendations(response.data.recommendations || [])
+  setCached(Boolean(response.data.cached) === true)
   } catch (error) {
     console.error('Error fetching recommendations:', error)
     setError('Failed to load recommendations')
@@ -72,6 +73,25 @@ const Recommendations = () => {
     setLoading(false)
   }
 }
+
+  const fetchCachedRecommendations = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      const response = await axios.get('/recommendations/')
+      const recs = response.data.recommendations || []
+      // Don't overwrite fresh results with empty cached payloads
+      if (Array.isArray(recs) && recs.length > 0) {
+        setRecommendations(recs)
+        setCached(Boolean(response.data.cached) === true)
+      }
+    } catch (error) {
+      console.error('Error fetching cached recommendations:', error)
+      setError('Failed to load recommendations')
+    } finally {
+      setLoading(false)
+    }
+  }
 
 
   const getRecommendationColor = (recommendation) => {
@@ -365,7 +385,7 @@ const Recommendations = () => {
         <DialogActions>
           <Button onClick={() => setFilterDialogOpen(false)}>Cancel</Button>
           <Button 
-            onClick={() => setFilterDialogOpen(false)} 
+            onClick={() => { setFilterDialogOpen(false); fetchRecommendations(); }} 
             variant="contained"
           >
             Apply Filters

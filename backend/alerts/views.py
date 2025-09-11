@@ -43,7 +43,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import Alert
 from .serializers import AlertSerializer
-from .utils import price_stream
+from django.conf import settings
+from django.core.cache import cache
+import requests
 
 
 # List & Create alerts
@@ -90,14 +92,108 @@ def alert_detail(request, pk):
 
 
 # Check alerts manually
-from asgiref.sync import async_to_sync
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def check_alerts(request):
-    """Check only current user's alerts"""
-    # Run the async price_stream for the user
-    async_to_sync(price_stream)(user=request.user)
-    # Return all triggered alerts for the user
-    triggered = Alert.objects.filter(user=request.user, triggered=True)
+    """Lightweight check for user's alerts without opening a long-lived WS.
+
+    For each active alert symbol:
+    - Try Redis cache (price:{symbol}).
+    - Fallback to Finnhub REST quote (c field).
+    - Update alerts if triggered.
+    Returns list of triggered alerts for the user.
+    """
+    user = request.user
+    # Unique symbols for active, untriggered alerts
+    symbols = (
+        Alert.objects.filter(user=user, enabled=True, triggered=False)
+        .values_list("symbol", flat=True)
+        .distinct()
+    )
+
+    finnhub_token = getattr(settings, "FINNHUB_API_KEY", None)
+    base_url = "https://finnhub.io/api/v1/quote"
+
+    latest_prices = {}
+    for sym in symbols:
+        cached = cache.get(f"price:{sym}")
+        price = None
+        if isinstance(cached, dict):
+            price = cached.get("latestPrice")
+        elif isinstance(cached, (int, float)):
+            price = float(cached)
+
+        if price is None and finnhub_token:
+            try:
+                r = requests.get(base_url, params={"symbol": sym, "token": finnhub_token}, timeout=8)
+                if r.ok:
+                    j = r.json() or {}
+                    c = j.get("c")
+                    pc = j.get("pc")
+                    price = float(c) if c is not None else None
+                    if price is not None:
+                        change = (price - pc) if (pc is not None) else None
+                        change_percent = ((change / pc) * 100) if (change is not None and pc) else None
+                        cache.set(
+                            f"price:{sym}",
+                            {
+                                "latestPrice": price,
+                                "change": change,
+                                "changePercent": change_percent,
+                                "timestamp": None,
+                            },
+                            timeout=60,
+                        )
+            except Exception:
+                # Ignore network errors here; leave price as None
+                pass
+        latest_prices[sym] = price
+
+    # Evaluate alerts
+    active_alerts = list(
+        Alert.objects.filter(user=user, enabled=True, triggered=False)
+    )
+    for alert in active_alerts:
+        current_price = latest_prices.get(alert.symbol)
+        if current_price is None:
+            continue
+        target = float(alert.target_price)
+        should_trigger = (
+            (alert.type == "price_above" and current_price >= target)
+            or (alert.type == "price_below" and current_price <= target)
+        )
+        if should_trigger:
+            alert.triggered = True
+            from django.utils.timezone import now
+            alert.triggered_at = now()
+            alert.save(update_fields=["triggered", "triggered_at"])
+
+    # Return user's triggered alerts
+    triggered = Alert.objects.filter(user=user, triggered=True).order_by("-triggered_at")
     serializer = AlertSerializer(triggered, many=True)
     return Response({"triggered": serializer.data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def trigger_alert(request, pk):
+    """Mark a specific alert as triggered now (used for immediate triggering).
+
+    Only allows updating the current user's alert. Sets triggered and triggered_at.
+    """
+    try:
+        alert = Alert.objects.get(pk=pk, user=request.user)
+    except Alert.DoesNotExist:
+        return Response({"error": "Alert not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not alert.enabled:
+        return Response({"error": "Alert is disabled"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not alert.triggered:
+        from django.utils.timezone import now
+        alert.triggered = True
+        alert.triggered_at = now()
+        alert.save(update_fields=["triggered", "triggered_at"])
+
+    serializer = AlertSerializer(alert)
+    return Response(serializer.data)

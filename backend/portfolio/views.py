@@ -2,6 +2,26 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from django.core.cache import cache
 
+# Utility: normalize any cached value into a consistent dict shape
+def _normalize_cached_price(cached):
+    """Return a dict with latestPrice, change, changePercent, timestamp or None."""
+    if isinstance(cached, dict):
+        # Ensure required keys exist
+        return {
+            "latestPrice": cached.get("latestPrice"),
+            "change": cached.get("change"),
+            "changePercent": cached.get("changePercent"),
+            "timestamp": cached.get("timestamp"),
+        }
+    if isinstance(cached, (int, float)):
+        return {
+            "latestPrice": float(cached),
+            "change": None,
+            "changePercent": None,
+            "timestamp": None,
+        }
+    return None
+
 # New endpoint: fetch prices for a list of symbols
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -19,8 +39,9 @@ def batch_prices(request):
     results = []
     for sym in symbols:
         cached = cache.get(f"price:{sym}")
-        if cached:
-            results.append({"symbol": sym, **cached})
+        norm = _normalize_cached_price(cached)
+        if norm is not None:
+            results.append({"symbol": sym, **norm})
         else:
             # Fetch live data from Finnhub API
             url = f"https://finnhub.io/api/v1/quote?symbol={sym}&token={settings.FINNHUB_API_KEY}"
@@ -30,7 +51,7 @@ def batch_prices(request):
                 price = data.get("c")
                 prev_price = data.get("pc")
                 change = price - prev_price if price is not None and prev_price is not None else None
-                change_percent = (change / prev_price * 100) if change is not None and prev_price else None
+                change_percent = (change / prev_price * 100) if (change is not None and prev_price) else None
                 result = {
                     "symbol": sym,
                     "latestPrice": price,
@@ -83,9 +104,10 @@ def user_interested_prices(request):
     for sym in symbols:
         print(sym,'----------')
         cached = cache.get(f"price:{sym}")
-        if cached:
-            results.append({"symbol": sym, **cached})
-            print(cached,'--------')
+        norm = _normalize_cached_price(cached)
+        if norm is not None:
+            results.append({"symbol": sym, **norm})
+            print(norm,'--------')
         else:
             results.append({
                 "symbol": sym,
@@ -115,8 +137,9 @@ def prices(request):
     results = []
     for sym in symbol_list:
         cached = cache.get(f"price:{sym}")
-        if cached:
-            results.append({"symbol": sym, **cached})
+        norm = _normalize_cached_price(cached)
+        if norm is not None:
+            results.append({"symbol": sym, **norm})
         else:
             # If not in cache, return nulls
             results.append({

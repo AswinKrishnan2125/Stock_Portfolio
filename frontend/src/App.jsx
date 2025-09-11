@@ -12,6 +12,7 @@ import Portfolio from './pages/Portfolio'
 import Charts from './pages/Charts'
 import Alerts from './pages/Alerts'
 import Recommendations from './pages/Recommendations'
+import { HistoricalDataProvider } from './contexts/HistoricalDataContext'
 
 const PrivateRoute = () => {
   const { isAuthenticated } = useAuth()
@@ -24,7 +25,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route element={<PrivateRoute />}>
-        <Route element={<StockLiveProvider><Layout /></StockLiveProvider>}>
+        <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/portfolios" element={<Portfolio />} />
           <Route path="/charts" element={<Charts />} />
@@ -40,7 +41,9 @@ function App() {
   return (
     <AuthProvider>
       <StockLiveProvider>
-        <AppRoutes />
+        <HistoricalDataProvider>
+          <AppRoutes />
+        </HistoricalDataProvider>
       </StockLiveProvider>
     </AuthProvider>
   )

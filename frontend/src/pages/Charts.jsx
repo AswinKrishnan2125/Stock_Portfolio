@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   Box,
   Typography,
@@ -27,9 +27,9 @@ import {
   AreaChart,
   Area
 } from 'recharts'
-import axios from 'axios'
-import { useAuth } from '../contexts/AuthContext'
 import { useStockLive } from "../contexts/StockLiveProvider";
+import { useHistoricalData } from "../contexts/HistoricalDataContext";
+import axios from 'axios'
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D']
 
@@ -43,12 +43,11 @@ const Charts = () => {
   const [portfolioData, setPortfolioData] = useState([])
   const [portfolioError, setPortfolioError] = useState('')
   const [error, setError] = useState('')
-  const [historicalData, setHistoricalData] = useState({})
   const [selectedTimeframe, setSelectedTimeframe] = useState('1w')
   const [selectedChart, setSelectedChart] = useState('line')
-  const { token } = useAuth();
   const { interestedSymbols } = useStockLive();
   const [stockData, setStockData] = useState([]);
+  const { fetchHistoricalData, getFilteredData } = useHistoricalData();
 
   useEffect(() => {
     fetchData()
@@ -59,61 +58,42 @@ const Charts = () => {
     if (interestedSymbols && interestedSymbols.length > 0) {
       setStockData(interestedSymbols.map(symbol => ({ symbol })));
     } else {
-      setStockData([]);
+  // Fallback demo symbols only if user has none
+  setStockData([{ symbol: 'AAPL' }, { symbol: 'MSFT' }]);
     }
   }, [interestedSymbols]);
 
   const fetchData = async () => {
     try {
-      // Fetch portfolio data
+      // Fetch portfolio data from backend
       const portfoliosResponse = await axios.get('/portfolios/')
       const portfolios = portfoliosResponse.data.results || portfoliosResponse.data
 
       // Generate portfolio chart data
-      const portfolioChartData = portfolios.map(portfolio => ({
+      const portfolioChartData = portfolios.map((portfolio) => ({
         name: portfolio.name,
         value: portfolio.total_value || 0,
-        gainLoss: portfolio.total_gain_loss || 0
+        gainLoss: portfolio.total_gain_loss || 0,
       }))
       setPortfolioData(portfolioChartData)
-
-      // Fetch stockData for historical charts (demo: use AAPL, MSFT if none)
-      if (portfolios.length > 0 && portfolios[0].stocks) {
-        setStockData(portfolios[0].stocks.map(s => ({ symbol: s.symbol })));
-      } else {
-        setStockData([{ symbol: "AAPL" }, { symbol: "MSFT" }]);
-      }
     } catch (error) {
       setPortfolioError('Failed to load portfolio data')
     }
   }
 
   useEffect(() => {
-    fetchHistory()
-    // eslint-disable-next-line
-  }, [stockData, selectedTimeframe])
-
-  const fetchHistory = async () => {
-    try {
-      let allData = {};
-      // Use live symbols from stockData
-      const symbols = stockData.map(s => s.symbol);
-      if (symbols.length === 0) {
-        setHistoricalData({});
-        return;
-      }
-      for (const symbol of symbols) {
-        const response = await axios.get(
-          `/historical/prices/?symbol=${symbol}&range=${selectedTimeframe}`
-        );
-        const prices = response.data.prices[symbol];
-        allData[symbol] = prices || [];
-      }
-      setHistoricalData(allData);
-    } catch (error) {
-      console.error("Error fetching historical data:", error);
+    const symbols = stockData.map((s) => s.symbol);
+    if (symbols.length > 0) {
+      // Fetch once (cached); timeframe filtering happens client-side
+      fetchHistoricalData(symbols);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockData]);
+
+  const filteredHistoricalData = useMemo(() => {
+    const symbols = stockData.map((s) => s.symbol);
+    return getFilteredData(symbols, selectedTimeframe);
+  }, [stockData, selectedTimeframe, getFilteredData]);
 
   const handleTimeframeChange = (event, newValue) => {
     if (newValue) setSelectedTimeframe(newValue);
@@ -124,16 +104,16 @@ const Charts = () => {
   };
 
   const renderChart = () => {
-    if (!historicalData || Object.keys(historicalData).length === 0) return null;
+  if (!filteredHistoricalData || Object.keys(filteredHistoricalData).length === 0) return null;
 
-    const symbols = Object.keys(historicalData);
+  const symbols = Object.keys(filteredHistoricalData);
     const chartData = [];
 
     // Build dataset for recharts
-    historicalData[symbols[0]].forEach((day, idx) => {
+  filteredHistoricalData[symbols[0]].forEach((day, idx) => {
       const entry = { date: day.date || day.timestamp };
       symbols.forEach(sym => {
-        entry[sym] = historicalData[sym][idx]?.close;
+    entry[sym] = filteredHistoricalData[sym][idx]?.close;
       });
       chartData.push(entry);
     });
@@ -304,7 +284,7 @@ const Charts = () => {
 
       {/* Historical Chart */}
       <Box sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-        {renderChart() || (
+  {renderChart() || (
           <Typography color="text.secondary" textAlign="center">
             No historical data available for selected timeframe.
           </Typography>
