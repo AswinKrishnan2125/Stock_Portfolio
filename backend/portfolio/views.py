@@ -1,3 +1,167 @@
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from django.core.cache import cache
+
+# New endpoint: fetch prices for a list of symbols
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def batch_prices(request):
+    user_id = request.GET.get("user_id")
+    if user_id:
+        symbols = list(InterestedStock.objects.filter(user_id=user_id).values_list('symbol', flat=True))
+    else:
+        symbols = request.GET.get("symbols")
+        if not symbols:
+            return Response({"error": "No symbols provided"}, status=400)
+        symbols = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    import requests
+    from django.conf import settings
+    results = []
+    for sym in symbols:
+        cached = cache.get(f"price:{sym}")
+        if cached:
+            results.append({"symbol": sym, **cached})
+        else:
+            # Fetch live data from Finnhub API
+            url = f"https://finnhub.io/api/v1/quote?symbol={sym}&token={settings.FINNHUB_API_KEY}"
+            try:
+                r = requests.get(url, timeout=10)
+                data = r.json()
+                price = data.get("c")
+                prev_price = data.get("pc")
+                change = price - prev_price if price is not None and prev_price is not None else None
+                change_percent = (change / prev_price * 100) if change is not None and prev_price else None
+                result = {
+                    "symbol": sym,
+                    "latestPrice": price,
+                    "change": change,
+                    "changePercent": change_percent,
+                    "timestamp": None,
+                }
+                results.append(result)
+                # Optionally cache the result
+                cache.set(f"price:{sym}", result, timeout=300)
+            except Exception as e:
+                results.append({
+                    "symbol": sym,
+                    "latestPrice": None,
+                    "change": None,
+                    "changePercent": None,
+                    "timestamp": None,
+                    "error": str(e),
+                })
+    return Response(results)
+
+    
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_interested_prices(request):
+    print("[DEBUG] user_interested_prices endpoint called")
+    print(f"[DEBUG] request.META: {request.META}")
+    print(f"[DEBUG] raw QUERY_STRING: {request.META.get('QUERY_STRING', '')}")
+    print(f"[DEBUG] user_id param: {user_id}")
+    print(f"[DEBUG] user_id param: {user_id}")
+    import urllib.parse
+    query_string = request.META.get('QUERY_STRING', '')
+    params = urllib.parse.parse_qs(query_string)
+    user_id = params.get('user_id', [None])[0]
+    if user_id:
+        symbols = list(InterestedStock.objects.filter(user_id=user_id).values_list('symbol', flat=True))
+        print(f"[DEBUG] symbols for user_id {user_id}: {symbols}")
+        if not symbols:
+            print(f"[DEBUG] No interested symbols found for user_id {user_id}")
+    else:
+        user = request.user
+        symbols = list(InterestedStock.objects.filter(user=user).values_list('symbol', flat=True))
+        print(f"[DEBUG] symbols for request.user {user}: {symbols}")
+        if not symbols:
+            print(f"[DEBUG] No interested symbols found for request.user {user}")
+    results = []
+    for sym in symbols:
+        print(sym,'----------')
+        cached = cache.get(f"price:{sym}")
+        if cached:
+            results.append({"symbol": sym, **cached})
+            print(cached,'--------')
+        else:
+            results.append({
+                "symbol": sym,
+                "latestPrice": None,
+                "change": None,
+                "changePercent": None,
+                "timestamp": None,
+            })
+    return Response(results)
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from django.core.cache import cache
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def prices(request):
+    # Accepts ?symbol=TSLA or ?symbols=TSLA,AMZN
+    symbol = request.GET.get("symbol")
+    symbols = request.GET.get("symbols")
+    if symbols:
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    elif symbol:
+        symbol_list = [symbol.strip().upper()]
+    else:
+        return JsonResponse({"error": "No symbol(s) provided"}, status=400)
+
+    results = []
+    for sym in symbol_list:
+        cached = cache.get(f"price:{sym}")
+        if cached:
+            results.append({"symbol": sym, **cached})
+        else:
+            # If not in cache, return nulls
+            results.append({
+                "symbol": sym,
+                "latestPrice": None,
+                "change": None,
+                "changePercent": None,
+                "timestamp": None,
+            })
+    if len(results) == 1:
+        return JsonResponse(results[0])
+    return JsonResponse(results, safe=False)
+import requests
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from django.conf import settings
+# Finnhub stock search endpoint
+@require_GET
+def finnhub_stock_search(request):
+    query = request.GET.get('q', '').strip()
+    if not query:
+        return JsonResponse({'results': []})
+
+    api_key = getattr(settings, 'FINNHUB_API_KEY', None)
+    if not api_key:
+        return JsonResponse({'error': 'Finnhub API key not configured'}, status=500)
+
+    url = f'https://finnhub.io/api/v1/search?q={query}&token={api_key}'
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for item in data.get('result', []):
+            # Only include stocks (not funds, indices, etc.)
+            if item.get('type') == 'Common Stock':
+                results.append({
+                    'symbol': item.get('symbol'),
+                    'description': item.get('description'),
+                    'displaySymbol': item.get('displaySymbol'),
+                    'mic': item.get('mic'),
+                })
+        return JsonResponse({'results': results})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response

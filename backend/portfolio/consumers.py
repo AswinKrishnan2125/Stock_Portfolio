@@ -1,6 +1,3 @@
-
-
-
 import json
 import asyncio
 import websockets
@@ -13,7 +10,21 @@ from django.core.cache import cache  # use Django cache
 class LivePriceConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
-        self.symbols = ["AAPL", "GOOGL","MSFT", "AMZN", "TSLA"]
+        import urllib.parse
+        query_string = self.scope.get('query_string', b'').decode()
+        params = urllib.parse.parse_qs(query_string)
+        user_id = params.get('user_id', [None])[0]
+        print(f"[WS DEBUG] user_id from query: {user_id}")
+        if user_id:
+            from asgiref.sync import sync_to_async
+            from .models import InterestedStock
+            symbols = await sync_to_async(list)(InterestedStock.objects.filter(user_id=user_id).values_list('symbol', flat=True))
+            print(f"[WS DEBUG] interested symbols for user {user_id}: {symbols}")
+            self.symbols = list(symbols) if symbols else ["AAPL"]
+        else:
+            print("[WS DEBUG] no user_id provided, using default symbol AAPL")
+            self.symbols = ["AAPL"]
+        print(f"[WS DEBUG] final symbols used: {self.symbols}")
         self.running = True
         self.prev_prices = {}
         asyncio.create_task(self.stream_prices())
@@ -74,6 +85,7 @@ class LivePriceConsumer(AsyncWebsocketConsumer):
                         updates = []
                         for sym in self.symbols:
                             cached = cache.get(f"price:{sym}")
+                            print(cached,'----------------')
                             if cached:
                                 updates.append(cached)
                         if updates:

@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import {
   Box, Typography, Card, CardContent, Grid, Button, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, Select, MenuItem, FormControl,
+  DialogContent, DialogActions, TextField, Select, FormControl,
   InputLabel, List, ListItem, ListItemText, ListItemSecondaryAction,
-  IconButton, Chip, Alert, CircularProgress, Switch, FormControlLabel, Divider
+  IconButton, Chip, Alert, CircularProgress, Switch, FormControlLabel, Divider,
+  Menu, MenuItem
 } from '@mui/material'
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Notifications as NotificationsIcon,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  MoreVert as MoreVertIcon
 } from '@mui/icons-material'
 import axios from 'axios'
+import { useStockLive } from "../contexts/StockLiveProvider";
 
 const Alerts = () => {
   const [alerts, setAlerts] = useState([])
@@ -25,6 +28,9 @@ const Alerts = () => {
     target_price: '',
     enabled: true
   })
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null)
+  const [menuAlert, setMenuAlert] = useState(null)
+  const { stockData } = useStockLive();
 
   // Load alerts on mount
   useEffect(() => {
@@ -110,6 +116,16 @@ const Alerts = () => {
   const getAlertStatusColor = (triggered) =>
     triggered ? 'error' : 'default'
 
+  const handleMenuOpen = (event, alert) => {
+    setMenuAnchorEl(event.currentTarget)
+    setMenuAlert(alert)
+  }
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null)
+    setMenuAlert(null)
+  }
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -121,7 +137,7 @@ const Alerts = () => {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">Price Alerts</Typography>
+    <Typography variant="h4" component="div">Price Alerts</Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -137,17 +153,19 @@ const Alerts = () => {
         <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" gutterBottom component="div">
                 Active Alerts
               </Typography>
               {alerts.length === 0 ? (
-                <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
+                <Typography color="textSecondary" align="center" sx={{ py: 4 }} component="div">
                   No alerts configured. Create your first price alert to get started!
                 </Typography>
               ) : (
                 <List>
-                  {alerts.map((alert, index) => (
-                    <React.Fragment key={alert.id}>
+                  {alerts.map((alert, index) => {
+                    const live = stockData.find(s => s.symbol === alert.symbol);
+                    return (
+                      <React.Fragment key={alert.id}>
                       <ListItem>
                         <Box display="flex" alignItems="center" sx={{ mr: 2 }}>
                           {getAlertTypeIcon(alert.type)}
@@ -155,7 +173,7 @@ const Alerts = () => {
                         <ListItemText
                           primary={
                             <Box display="flex" alignItems="center" gap={1}>
-                              <Typography variant="h6" >{alert.symbol}</Typography>
+                              <Typography variant="h6" component="div">{alert.symbol}</Typography>
                               <Chip
                                 label={getAlertTypeText(alert.type)}
                                 size="small"
@@ -171,12 +189,15 @@ const Alerts = () => {
                           }
                           secondary={
                             <Box>
-                              <Typography variant="body2" component="span">
+                              <Typography variant="body2" component="div">
                                 Target: ${alert.target_price} | Current: ${alert.current_price || 'N/A'}
                               </Typography>
                               <Typography variant="caption" component="div" color="textSecondary">
                                 Created: {new Date(alert.created_at).toLocaleDateString()}
                                 {alert.triggered_at && ` | Triggered: ${new Date(alert.triggered_at).toLocaleDateString()}`}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" component="div">
+                                Current Price: {typeof live?.latestPrice === "number" ? live.latestPrice : "N/A"}
                               </Typography>
                             </Box>
                           }
@@ -192,18 +213,15 @@ const Alerts = () => {
                             }
                             label=""
                           />
-                          <IconButton
-                            edge="end"
-                            onClick={() => handleDeleteAlert(alert.id)}
-                            color="error"
-                          >
-                            <DeleteIcon />
+                          <IconButton edge="end" onClick={(e) => handleMenuOpen(e, alert)}>
+                            <MoreVertIcon />
                           </IconButton>
                         </ListItemSecondaryAction>
                       </ListItem>
                       {index < alerts.length - 1 && <Divider />}
                     </React.Fragment>
-                  ))}
+                    )
+                  })}
                 </List>
               )}
             </CardContent>
@@ -213,23 +231,23 @@ const Alerts = () => {
         <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" gutterBottom component="div">
                 Alert Statistics
               </Typography>
               <Box display="flex" flexDirection="column" gap={2}>
                 <Box display="flex" justifyContent="space-between">
-                  <Typography>Total Alerts:</Typography>
-                  <Typography variant="h6">{alerts.length}</Typography>
+                  <Typography component="div">Total Alerts:</Typography>
+                  <Typography variant="h6" component="div">{alerts.length}</Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
-                  <Typography>Active Alerts:</Typography>
-                  <Typography variant="h6" color="primary">
+                  <Typography component="div">Active Alerts:</Typography>
+                  <Typography variant="h6" color="primary" component="div">
                     {alerts.filter(alert => alert.enabled).length}
                   </Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
-                  <Typography>Triggered:</Typography>
-                  <Typography variant="h6" color="error">
+                  <Typography component="div">Triggered:</Typography>
+                  <Typography variant="h6" color="error" component="div">
                     {alerts.filter(alert => alert.triggered).length}
                   </Typography>
                 </Box>
@@ -303,6 +321,16 @@ const Alerts = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={() => { const id = menuAlert?.id; handleMenuClose(); if (id) handleDeleteAlert(id) }} sx={{ color: 'error.main' }}>Delete</MenuItem>
+      </Menu>
     </Box>
   )
 }

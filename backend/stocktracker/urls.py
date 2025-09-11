@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/mock/', include('portfolio.mock_urls')),
     path('api/alerts/', include('alerts.urls')),
     path('api/recommendation', include('portfolio.mock_urls')),
+    # path('api/search/', include('portfolio.urls')),
 ]
 
 if settings.DEBUG:

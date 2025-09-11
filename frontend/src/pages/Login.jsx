@@ -71,6 +71,7 @@ const Login = () => {
           <Typography component="h2" variant="h6" gutterBottom>
             Sign In
           </Typography>
+          <div className="bg-blue-500 p-4">Hello</div>
           
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>

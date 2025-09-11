@@ -5,6 +5,9 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
+import { StockLiveProvider } from './contexts/StockLiveProvider';
+// ...existing code...
+export const StockDataContext = React.createContext();
 import Portfolio from './pages/Portfolio'
 import Charts from './pages/Charts'
 import Alerts from './pages/Alerts'
@@ -21,7 +24,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route element={<PrivateRoute />}>
-        <Route element={<Layout />}>
+        <Route element={<StockLiveProvider><Layout /></StockLiveProvider>}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/portfolios" element={<Portfolio />} />
           <Route path="/charts" element={<Charts />} />
@@ -36,7 +39,9 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <StockLiveProvider>
+        <AppRoutes />
+      </StockLiveProvider>
     </AuthProvider>
   )
 }

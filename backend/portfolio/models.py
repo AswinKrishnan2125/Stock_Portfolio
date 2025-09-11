@@ -78,5 +78,8 @@ class InterestedStock(models.Model):
     name = models.CharField(max_length=100, blank=True)
     added_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('user', 'symbol')
+
     def __str__(self):
         return f"{self.user} - {self.symbol}"
