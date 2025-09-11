@@ -111,6 +111,11 @@ const Recommendations = () => {
     }
   }
 
+  const formatPrice = (value) => {
+    const n = Number(value)
+    return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+  }
+
   const getRiskLevelColor = (riskLevel) => {
     switch (riskLevel) {
       case 'LOW':
@@ -161,8 +166,7 @@ const Recommendations = () => {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">AI Stock Recommendations</Typography>
+      <Box display="flex" justifyContent="flex-end" alignItems="center" mb={3}>
         <Box display="flex" gap={2}>
           <Button
             variant="outlined"
@@ -224,10 +228,10 @@ const Recommendations = () => {
                     </Box>
                     <Box textAlign="right">
                       <Typography variant="h6" color="primary">
-                        ${rec.target_price}
+                        ${formatPrice(rec.target_price)}
                       </Typography>
                       <Typography variant="body2" color="textSecondary">
-                        Current: ${rec.current_price}
+                        Current: ${formatPrice(rec.current_price)}
                       </Typography>
                     </Box>
                   </Box>

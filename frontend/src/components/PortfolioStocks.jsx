@@ -14,10 +14,29 @@ import {
 } from '@mui/material';
 import { Add as AddStockIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { Menu, MenuItem } from '@mui/material';
+import { useStockLive } from '../contexts/StockLiveProvider';
 
 const PortfolioStocks = ({ stocks, onAddStock, onEditStock, onDeleteStock }) => {
   const [menuAnchorEl, setMenuAnchorEl] = React.useState(null);
   const [menuStock, setMenuStock] = React.useState(null);
+  const { stockData } = useStockLive();
+
+  const priceBySymbol = React.useMemo(() => {
+    const map = new Map();
+    (stockData || []).forEach((s) => {
+      if (s?.symbol) map.set(String(s.symbol).toUpperCase(), s.latestPrice);
+    });
+    return map;
+  }, [stockData]);
+
+  const renderCurrent = (symbol) => {
+    const key = String(symbol || '').toUpperCase();
+    const price = priceBySymbol.get(key);
+    if (typeof price === 'number') {
+      return `$${price.toFixed(2)}`;
+    }
+    return 'NA';
+  };
 
   const handleMenuOpen = (event, stock) => {
     setMenuAnchorEl(event.currentTarget);
@@ -30,7 +49,14 @@ const PortfolioStocks = ({ stocks, onAddStock, onEditStock, onDeleteStock }) => 
   };
 
   return (
-    <Box className="bg-white rounded-lg shadow p-6 mt-6">
+    <Box sx={{
+      mt: 6,
+      p: 3,
+      borderRadius: 2,
+      bgcolor: 'background.paper',
+      border: '1px solid',
+      borderColor: 'divider'
+    }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5">Stocks in Portfolio</Typography>
         <Button variant="contained" startIcon={<AddStockIcon />} onClick={onAddStock}>
@@ -38,24 +64,30 @@ const PortfolioStocks = ({ stocks, onAddStock, onEditStock, onDeleteStock }) => 
         </Button>
       </Box>
       {stocks && stocks.length > 0 ? (
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Symbol</TableCell>
-                <TableCell>Company</TableCell>
-                <TableCell>Shares</TableCell>
-                <TableCell>Value</TableCell>
-                <TableCell>Gain/Loss</TableCell>
-                <TableCell>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Symbol</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Shares</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Current</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Value</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Gain/Loss</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {stocks.map((stock) => (
-                <TableRow key={stock.id}>
+                <TableRow key={stock.id} hover>
                   <TableCell>{stock.symbol}</TableCell>
                   <TableCell>{stock.company_name}</TableCell>
                   <TableCell>{stock.shares}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color={typeof priceBySymbol.get(String(stock.symbol || '').toUpperCase()) === 'number' ? 'text.primary' : 'text.secondary'}>
+                      {renderCurrent(stock.symbol)}
+                    </Typography>
+                  </TableCell>
                   <TableCell>${(stock.total_value || 0).toLocaleString()}</TableCell>
                   <TableCell>
                     <Typography
@@ -76,7 +108,7 @@ const PortfolioStocks = ({ stocks, onAddStock, onEditStock, onDeleteStock }) => 
           </Table>
         </TableContainer>
       ) : (
-        <Typography color="textSecondary">No stocks in this portfolio.</Typography>
+        <Typography color="text.secondary">No stocks in this portfolio.</Typography>
       )}
       <Menu
         anchorEl={menuAnchorEl}

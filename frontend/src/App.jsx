@@ -13,6 +13,8 @@ import Charts from './pages/Charts'
 import Alerts from './pages/Alerts'
 import Recommendations from './pages/Recommendations'
 import { HistoricalDataProvider } from './contexts/HistoricalDataContext'
+import { ThemeProvider, CssBaseline } from '@mui/material'
+import theme from './theme'
 
 const PrivateRoute = () => {
   const { isAuthenticated } = useAuth()
@@ -39,13 +41,16 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <StockLiveProvider>
-        <HistoricalDataProvider>
-          <AppRoutes />
-        </HistoricalDataProvider>
-      </StockLiveProvider>
-    </AuthProvider>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AuthProvider>
+        <StockLiveProvider>
+          <HistoricalDataProvider>
+            <AppRoutes />
+          </HistoricalDataProvider>
+        </StockLiveProvider>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
 

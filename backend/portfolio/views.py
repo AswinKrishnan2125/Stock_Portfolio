@@ -282,3 +282,12 @@ class InterestedStockViewSet(viewsets.ModelViewSet):
         qs = self.get_queryset().filter(symbol__icontains=query)[:10]
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['delete'], url_path='by-symbol/(?P<symbol>[^/]+)')
+    def delete_by_symbol(self, request, symbol=None):
+        symbol = (symbol or '').upper()
+        obj = self.get_queryset().filter(symbol__iexact=symbol).first()
+        if not obj:
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+        obj.delete()
+        return Response({"deleted": True, "symbol": symbol}, status=status.HTTP_200_OK)

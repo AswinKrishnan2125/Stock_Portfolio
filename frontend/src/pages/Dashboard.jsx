@@ -8,8 +8,13 @@ import {
   Chip,
   Typography,
   CircularProgress,
+  IconButton,
+  Menu,
+  MenuItem,
 } from "@mui/material";
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { TrendingUp, TrendingDown, Circle } from "lucide-react";
+import axios from 'axios'
 import StockSearch from "./StockSearch";
 import { useAuth } from "../contexts/AuthContext";
 import { useStockLive } from "../contexts/StockLiveProvider";
@@ -51,26 +56,34 @@ const Dashboard = () => {
   }
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+  <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      {/* Full-width hero section from top to hero bottom */}
+      <Box
+        sx={{
+          width: '100%',
+          position: 'relative',
+          backgroundImage:
+            'url("https://images.stockcake.com/public/8/6/9/869bfcae-8250-4327-8895-ae6d31ec1907_large/financial-market-analysis-stockcake.jpg")',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
+        <Box sx={{ position: 'absolute', inset: 0, bgcolor: 'rgba(255,255,255,0.6)' }} />
+        <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
+          <Box textAlign="center" sx={{ position: 'relative' }}>
+            <Typography variant="h3" fontWeight="bold" color="text.primary">
+              Discover Your Next Investment
+            </Typography>
+            <Typography variant="h6" color="text.secondary" mt={2}>
+              Search and analyze thousands of stocks and securities with real-time
+              data and insights.
+            </Typography>
+          </Box>
+        </Container>
+      </Box>
+
       <Container maxWidth="lg" sx={{ py: 6 }}>
-        {/* Header */}
-        <Box textAlign="center" mb={6}>
-          <Typography
-            variant="h3"
-            fontWeight="bold"
-            sx={{
-              background: "linear-gradient(90deg,#1976d2,#42a5f5)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            Discover Your Next Investment
-          </Typography>
-          <Typography variant="h6" color="text.secondary" mt={2}>
-            Search and analyze thousands of stocks and securities with real-time
-            data and insights.
-          </Typography>
-        </Box>
 
         {/* Search */}
         <Box mb={6}>
@@ -112,39 +125,42 @@ const Dashboard = () => {
               <Typography variant="h6" fontWeight="bold">
                 {stock.symbol}
               </Typography>
-              {isMarketLiveIST() ? (
-                          <Chip
-                            size="small"
-                            label="LIVE"
-                            icon={
-                              <Circle
-                                size={10}
-                                style={{ color: "green", fill: "green" }}
-                              />
-                            }
-                            sx={{
-                              bgcolor: "rgba(46,125,50,0.1)",
-                              color: "success.main",
-                              fontWeight: 500,
-                            }}
-                          />
-                        ) : (
-                          <Chip
-                            size="small"
-                            label="CLOSED"
-                            icon={
-                              <Circle
-                                size={10}
-                                style={{ color: "gray", fill: "gray" }}
-                              />
-                            }
-                            sx={{
-                              bgcolor: "rgba(120,120,120,0.1)",
-                              color: "text.secondary",
-                              fontWeight: 500,
-                            }}
-                          />
-                        )}
+              <Box display="flex" alignItems="center" gap={1}>
+                {isMarketLiveIST() ? (
+                  <Chip
+                    size="small"
+                    label="LIVE"
+                    icon={
+                      <Circle
+                        size={10}
+                        style={{ color: "green", fill: "green" }}
+                      />
+                    }
+                    sx={{
+                      bgcolor: "rgba(46,125,50,0.1)",
+                      color: "success.main",
+                      fontWeight: 500,
+                    }}
+                  />
+                ) : (
+                  <Chip
+                    size="small"
+                    label="CLOSED"
+                    icon={
+                      <Circle
+                        size={10}
+                        style={{ color: "gray", fill: "gray" }}
+                      />
+                    }
+                    sx={{
+                      bgcolor: "rgba(120,120,120,0.1)",
+                      color: "text.secondary",
+                      fontWeight: 500,
+                    }}
+                  />
+                )}
+                <StockCardMenu symbol={stock.symbol} />
+              </Box>
             </Box>
 
             {/* Current Value */}
@@ -214,3 +230,39 @@ export default Dashboard;
 // <StockDataContext.Provider value={React.useState([])}>
 //   <Dashboard />
 // </StockDataContext.Provider>
+
+function StockCardMenu({ symbol }) {
+  const { removeStock, refreshPrices } = useStockLive();
+  const { user } = useAuth();
+  const [anchorEl, setAnchorEl] = React.useState(null);
+  const open = Boolean(anchorEl);
+
+  const handleOpen = (e) => setAnchorEl(e.currentTarget);
+  const handleClose = () => setAnchorEl(null);
+
+  const handleDelete = async () => {
+    try {
+  // Call authenticated endpoint; axios carries the token from AuthContext setup
+  await axios.delete(`/interested-stocks/by-symbol/${encodeURIComponent(symbol)}/`)
+
+  // Update client state
+  await removeStock(symbol, user?.id)
+      refreshPrices()
+    } catch (e) {
+      console.error('Delete failed', e)
+    } finally {
+      handleClose()
+    }
+  }
+
+  return (
+    <>
+      <IconButton size="small" onClick={handleOpen} aria-label="more">
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={anchorEl} open={open} onClose={handleClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
+        <MenuItem onClick={handleDelete}>Delete</MenuItem>
+      </Menu>
+    </>
+  )
+}

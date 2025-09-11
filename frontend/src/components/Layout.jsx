@@ -36,10 +36,10 @@ const drawerWidth = 240
 
 const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { text: 'Portfolio', icon: <PortfolioIcon />, path: '/portfolios/' },
+  { text: 'Portfolio', icon: <PortfolioIcon />, path: '/portfolios' },
   { text: 'Charts', icon: <ChartsIcon />, path: '/charts' },
   { text: 'Alerts', icon: <AlertsIcon />, path: '/alerts' },
-  { text: 'AI Recommendations', icon: <RecommendationsIcon />, path: '/recommendations' },
+  { text: 'Recommendations', icon: <RecommendationsIcon />, path: '/recommendations' },
 ]
 
 const Layout = () => {
@@ -81,7 +81,7 @@ const Layout = () => {
   const drawer = (
     <div>
       <Toolbar>
-        <Typography variant="h6" noWrap component="div">
+        <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 700, letterSpacing: '0.2px' }}>
           Stock Tracker
         </Typography>
       </Toolbar>
@@ -92,6 +92,16 @@ const Layout = () => {
             <ListItemButton
               selected={location.pathname === item.path}
               onClick={() => handleNavigation(item.path)}
+              sx={{
+                borderRadius: 1,
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(37,99,235,0.12)',
+                  color: 'primary.main',
+                  '& .MuiListItemIcon-root': { color: 'primary.main' },
+                  '&:hover': { bgcolor: 'rgba(37,99,235,0.16)' },
+                },
+                '&:hover': { bgcolor: 'rgba(15,23,42,0.04)' },
+              }}
             >
               <ListItemIcon>{item.icon}</ListItemIcon>
               <ListItemText primary={item.text} />
@@ -121,7 +131,7 @@ const Layout = () => {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h5" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: '0.2px' }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'Stock Portfolio Tracker'}
           </Typography>
           <IconButton
@@ -200,6 +210,7 @@ const Layout = () => {
         sx={{
           flexGrow: 1,
           p: 3,
+          bgcolor: 'background.default',
           width: { md: `calc(100% - ${drawerWidth}px)` },
         }}
       >

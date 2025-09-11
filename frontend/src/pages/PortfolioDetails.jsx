@@ -32,6 +32,7 @@ import {
   Equalizer as EqualizerIcon,
   MoreVert as MoreVertIcon
 } from '@mui/icons-material'
+import { useStockLive } from '../contexts/StockLiveProvider'
 
 const PortfolioDetails = ({ portfolio, onBack, token }) => {
   const [portfolioData, setPortfolioData] = useState(portfolio)
@@ -52,6 +53,37 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
   const [editingStock, setEditingStock] = useState(null)
   const [menuAnchorEl, setMenuAnchorEl] = useState(null)
   const [menuStock, setMenuStock] = useState(null)
+  const { stockData } = useStockLive()
+
+  const priceBySymbol = React.useMemo(() => {
+    const map = new Map()
+    ;(stockData || []).forEach((s) => {
+      if (s?.symbol) map.set(String(s.symbol).toUpperCase(), s.latestPrice)
+    })
+    return map
+  }, [stockData])
+
+  const renderLivePrice = (symbol) => {
+    const key = String(symbol || '').toUpperCase()
+    const price = priceBySymbol.get(key)
+    return typeof price === 'number' ? `$${price.toFixed(2)}` : 'N/A'
+  }
+
+  const getCurrentNumericPrice = (symbol, fallback) => {
+    const key = String(symbol || '').toUpperCase()
+    const live = priceBySymbol.get(key)
+    if (typeof live === 'number') return live
+    const fb = parseFloat(fallback)
+    return Number.isFinite(fb) ? fb : undefined
+  }
+
+  const computeGainLoss = (stock) => {
+    const shares = parseFloat(stock.shares)
+    const purchase = parseFloat(stock.purchase_price)
+    const current = getCurrentNumericPrice(stock.symbol, stock.current_price)
+    if (!Number.isFinite(shares) || !Number.isFinite(purchase) || !Number.isFinite(current)) return 0
+    return (current - purchase) * shares
+  }
 
   useEffect(() => {
     fetchPortfolioDetails()
@@ -193,9 +225,32 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
   }
 
   const calculateGainLossPercentage = (stock) => {
-    if (!stock.purchase_price || !stock.current_price) return 0
-    return ((stock.current_price - stock.purchase_price) / stock.purchase_price * 100).toFixed(2)
+    const live = priceBySymbol.get(String(stock.symbol || '').toUpperCase())
+    const current = typeof live === 'number' ? live : stock.current_price
+    if (!stock.purchase_price || typeof current !== 'number') return 0
+    return (((current - stock.purchase_price) / stock.purchase_price) * 100).toFixed(2)
   }
+
+  // Portfolio-level live totals
+  const totals = React.useMemo(() => {
+    const list = portfolioData?.stocks || []
+    let totalValue = 0
+    let totalCost = 0
+    list.forEach((s) => {
+      const shares = parseFloat(s.shares)
+      const purchase = parseFloat(s.purchase_price)
+      const key = String(s.symbol || '').toUpperCase()
+      const live = priceBySymbol.get(key)
+      const current = typeof live === 'number' ? live : parseFloat(s.current_price)
+      if (!Number.isFinite(shares) || !Number.isFinite(purchase)) return
+      const safeCurrent = Number.isFinite(current) ? current : purchase
+      totalValue += shares * safeCurrent
+      totalCost += shares * purchase
+    })
+    const totalGainLoss = totalValue - totalCost
+    const avgReturnPct = totalCost > 0 ? (totalGainLoss / totalCost) * 100 : 0
+    return { totalValue, totalGainLoss, avgReturnPct }
+  }, [portfolioData?.stocks, priceBySymbol])
 
   const handleMenuOpen = (event, stock) => {
     setMenuAnchorEl(event.currentTarget)
@@ -216,11 +271,7 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
   }
 
   return (
-    <Box sx={{
-      background: (theme) => `linear-gradient(180deg, ${theme.palette.background.default} 0%, ${theme.palette.mode === 'light' ? '#f8fafc' : '#0b1220'} 100%)`,
-      p: { xs: 1, md: 2 },
-      borderRadius: 2
-    }}>
+    <Box sx={{ p: { xs: 1, md: 2 }, borderRadius: 2 }}>
       {/* Header */}
       <Box display="flex" alignItems="center" mb={3}>
         <Tooltip title="Back to portfolios">
@@ -230,7 +281,7 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
         </Tooltip>
         <Box flexGrow={1}>
           <Typography variant="h4" sx={{ fontWeight: 700 }}>{portfolioData.name}</Typography>
-          <Typography variant="body1" color="textSecondary">
+          <Typography variant="body1" color="text.secondary">
             {portfolioData.description || 'No description'}
           </Typography>
         </Box>
@@ -251,15 +302,15 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
       {/* Portfolio Summary */}
       <Grid container spacing={3} mb={4}>
         <Grid item xs={12} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+          <Card sx={{ borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography color="text.secondary" gutterBottom>
                     Total Value
                   </Typography>
                   <Typography variant="h5" component="div" sx={{ fontWeight: 700 }}>
-                    ${(portfolioData.total_value || 0).toLocaleString()}
+                    ${Number(totals.totalValue || 0).toLocaleString()}
                   </Typography>
                 </Box>
                 <Box sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', p: 1, borderRadius: 2 }}>
@@ -270,15 +321,15 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+          <Card sx={{ borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography color="text.secondary" gutterBottom>
                     Total Gain/Loss
                   </Typography>
                   <Box display="flex" alignItems="center" gap={1}>
-                    {(portfolioData.total_gain_loss || 0) >= 0 ? (
+                    {(Number(totals.totalGainLoss || 0)) >= 0 ? (
                       <TrendingUpIcon color="success" fontSize="small" />
                     ) : (
                       <TrendingDownIcon color="error" fontSize="small" />
@@ -286,26 +337,26 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
                     <Typography 
                       variant="h5" 
                       component="div"
-                      color={(portfolioData.total_gain_loss || 0) >= 0 ? 'success.main' : 'error.main'}
+                      color={Number(totals.totalGainLoss || 0) >= 0 ? 'success.main' : 'error.main'}
                       sx={{ fontWeight: 700 }}
                     >
-                      {(portfolioData.total_gain_loss || 0) >= 0 ? '+' : ''}${(portfolioData.total_gain_loss || 0).toLocaleString()}
+                      {Number(totals.totalGainLoss || 0) >= 0 ? '+' : ''}${Number(totals.totalGainLoss || 0).toLocaleString()}
                     </Typography>
                   </Box>
                 </Box>
-                <Box sx={{ bgcolor: (portfolioData.total_gain_loss || 0) >= 0 ? 'success.main' : 'error.main', color: '#fff', p: 1, borderRadius: 2 }}>
-                  {(portfolioData.total_gain_loss || 0) >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                <Box sx={{ bgcolor: Number(totals.totalGainLoss || 0) >= 0 ? 'success.main' : 'error.main', color: '#fff', p: 1, borderRadius: 2 }}>
+                  {Number(totals.totalGainLoss || 0) >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
                 </Box>
               </Box>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+          <Card sx={{ borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography color="text.secondary" gutterBottom>
                     Number of Stocks
                   </Typography>
                   <Typography variant="h5" component="div" sx={{ fontWeight: 700 }}>
@@ -320,22 +371,20 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+          <Card sx={{ borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography color="text.secondary" gutterBottom>
                     Average Return
                   </Typography>
                   <Typography 
                     variant="h5" 
                     component="div"
-                    color={portfolioData.total_gain_loss >= 0 ? 'success.main' : 'error.main'}
+                    color={Number(totals.totalGainLoss || 0) >= 0 ? 'success.main' : 'error.main'}
                     sx={{ fontWeight: 700 }}
                   >
-                    {portfolioData.total_value > 0 
-                      ? ((portfolioData.total_gain_loss / (portfolioData.total_value - portfolioData.total_gain_loss)) * 100).toFixed(2)
-                      : 0}%
+                    {Number.isFinite(totals.avgReturnPct) ? totals.avgReturnPct.toFixed(2) : 0}%
                   </Typography>
                 </Box>
                 <Box sx={{ bgcolor: 'info.main', color: 'info.contrastText', p: 1, borderRadius: 2 }}>
@@ -363,7 +412,7 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
                       <Typography variant="h6" component="div">
                         {stock.symbol}
                       </Typography>
-                      <Typography variant="body2" color="textSecondary">
+                      <Typography variant="body2" color="text.secondary">
                         {stock.company_name}
                       </Typography>
                     </Box>
@@ -378,57 +427,57 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
 
                   <Divider sx={{ my: 2 }} />
 
-                  <Grid container spacing={2}>
+          <Grid container spacing={2}>
                     <Grid item xs={6}>
-                      <Typography variant="body2" color="textSecondary">
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                         Shares
                       </Typography>
-                      <Typography variant="body1" fontWeight="medium">
+            <Typography variant="body1" fontWeight="medium" sx={{ fontSize: '1.05rem' }}>
                         {stock.shares}
                       </Typography>
                     </Grid>
                     <Grid item xs={6}>
-                      <Typography variant="body2" color="textSecondary">
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                         Total Value
                       </Typography>
-                      <Typography variant="body1" fontWeight="medium">
+            <Typography variant="body1" fontWeight="medium" sx={{ fontSize: '1.05rem' }}>
                         ${(stock.total_value || 0).toLocaleString()}
                       </Typography>
                     </Grid>
                     <Grid item xs={6}>
-                      <Typography variant="body2" color="textSecondary">
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                         Purchase Price
                       </Typography>
-                      <Typography variant="body1">
+            <Typography variant="body1" sx={{ fontSize: '1.05rem' }}>
                         ${stock.purchase_price}
                       </Typography>
                     </Grid>
                     <Grid item xs={6}>
-                      <Typography variant="body2" color="textSecondary">
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                         Current Price
                       </Typography>
-                      <Typography variant="body1">
-                        ${stock.current_price || 'N/A'}
+            <Typography variant="body1" color={typeof priceBySymbol.get(String(stock.symbol || '').toUpperCase()) === 'number' ? 'text.primary' : 'text.secondary'} sx={{ fontSize: '1.05rem' }}>
+                        {renderLivePrice(stock.symbol)}
                       </Typography>
                     </Grid>
                   </Grid>
 
                   <Box mt={2} mb={2}>
-                    <Typography variant="body2" color="textSecondary" gutterBottom>
+                    <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: '0.95rem' }}>
                       Gain/Loss
                     </Typography>
                     <Box display="flex" alignItems="center" gap={1}>
-                      {(stock.gain_loss || 0) >= 0 ? (
+                      {computeGainLoss(stock) >= 0 ? (
                         <TrendingUpIcon color="success" fontSize="small" />
                       ) : (
                         <TrendingDownIcon color="error" fontSize="small" />
                       )}
                       <Typography 
                         variant="h6" 
-                        color={(stock.gain_loss || 0) >= 0 ? 'success.main' : 'error.main'}
+                        color={computeGainLoss(stock) >= 0 ? 'success.main' : 'error.main'}
                         sx={{ fontWeight: 700 }}
                       >
-                        {(stock.gain_loss || 0) >= 0 ? '+' : ''}${(stock.gain_loss || 0).toLocaleString()}
+                        {computeGainLoss(stock) >= 0 ? '+' : ''}${Math.abs(computeGainLoss(stock)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </Typography>
                       <Chip 
                         label={`${calculateGainLossPercentage(stock)}%`}
@@ -440,21 +489,22 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
                   </Box>
 
                   <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>
-                    <Typography variant="body2" color="textSecondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                       Purchased: {formatDate(stock.purchase_date)}
                     </Typography>
                   </Box>
 
                   {stock.notes && (
                     <Box mt={2}>
-                      <Typography variant="body2" color="textSecondary" gutterBottom>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
                         Notes
                       </Typography>
                       <Typography variant="body2" sx={{ 
                         fontStyle: 'italic',
                         backgroundColor: 'grey.50',
                         padding: 1,
-                        borderRadius: 1
+                        borderRadius: 1,
+                        fontSize: '0.95rem'
                       }}>
                         {stock.notes}
                       </Typography>
@@ -467,10 +517,10 @@ const PortfolioDetails = ({ portfolio, onBack, token }) => {
         </Grid>
       ) : (
         <Box textAlign="center" py={8}>
-          <Typography variant="h6" color="textSecondary" gutterBottom>
+          <Typography variant="h6" color="text.secondary" gutterBottom>
             No stocks in this portfolio
           </Typography>
-          <Typography variant="body2" color="textSecondary" mb={3}>
+          <Typography variant="body2" color="text.secondary" mb={3}>
             Add your first stock to get started tracking your investments
           </Typography>
           <Button

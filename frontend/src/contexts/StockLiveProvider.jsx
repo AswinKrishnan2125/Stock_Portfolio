@@ -135,8 +135,7 @@ export const StockLiveProvider = ({ children }) => {
   // Add a stock to interested symbols
   const addStock = async (symbol, userId) => {
     try {
-      const response = await axios.post(`/interests/`, {
-        user_id: userId,
+      const response = await axios.post(`/interested-stocks/`, {
         symbol,
       });
   // Update subscriptions immediately so WS can subscribe without waiting for refetch
@@ -154,9 +153,7 @@ export const StockLiveProvider = ({ children }) => {
   // Remove a stock from interested symbols
   const removeStock = async (symbol, userId) => {
     try {
-      await axios.delete(`/interests/${symbol}/`, {
-        data: { user_id: userId },
-      });
+      await axios.delete(`/interested-stocks/by-symbol/${encodeURIComponent(symbol)}/`);
       setInterestedSymbols((prev) =>
         prev.filter((s) => s !== symbol)
       );

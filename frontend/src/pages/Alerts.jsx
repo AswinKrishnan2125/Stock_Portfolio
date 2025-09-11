@@ -363,47 +363,32 @@ import { keyframes, styled } from '@mui/material/styles'
 import axios from 'axios'
 import { useStockLive } from "../contexts/StockLiveProvider";
 
-// Keyframe animations for triggered alerts
-const bounceAnimation = keyframes`
-  0% { transform: translateY(0); }
-  25% { transform: translateY(-10px); }
-  50% { transform: translateY(0); }
-  75% { transform: translateY(-5px); }
-  100% { transform: translateY(0); }
-`
-
-const pulseAnimation = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
-`
+// (Removed bouncy/pulse animations for a more standard, subtle UI)
 
 // Styled components
 const AlertCard = styled(Card, {
   shouldForwardProp: (prop) => prop !== 'triggered'
 })(({ theme, triggered }) => ({
   position: 'relative',
-  transition: 'all 0.3s ease-in-out',
+  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
   cursor: 'pointer',
-  background: triggered 
-    ? 'linear-gradient(135deg, #ffebee 0%, #fff 100%)'
-    : 'linear-gradient(135deg, #f8f9fa 0%, #fff 100%)',
-  border: triggered ? '2px solid #f44336' : '1px solid #e0e0e0',
-  animation: triggered ? `${bounceAnimation} 1s ease-in-out` : 'none',
-  '&:hover': {
-    transform: 'translateY(-4px)',
-    boxShadow: '0 8px 25px rgba(0,0,0,0.12)',
-  },
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
   ...(triggered && {
-    animation: `${pulseAnimation} 2s infinite, ${bounceAnimation} 1s ease-in-out`,
+    borderColor: theme.palette.error.main,
   }),
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: theme.shadows[3],
+  },
 }))
 
 const StockSymbolChip = styled(Chip)(({ theme }) => ({
   fontWeight: 'bold',
   fontSize: '0.9rem',
-  background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-  color: 'white',
+  backgroundColor: theme.palette.grey[100],
+  color: theme.palette.text.primary,
+  border: `1px solid ${theme.palette.divider}`,
 }))
 
 const PriceBox = styled(Box, {
@@ -414,12 +399,9 @@ const PriceBox = styled(Box, {
   gap: theme.spacing(1),
   padding: theme.spacing(1),
   borderRadius: theme.shape.borderRadius,
-  background: triggered 
-    ? 'rgba(244, 67, 54, 0.1)' 
-    : 'rgba(76, 175, 79, 0.1)',
-  border: triggered 
-    ? '1px solid rgba(244, 67, 54, 0.3)' 
-    : '1px solid rgba(76, 175, 79, 0.3)',
+  backgroundColor: theme.palette.action.hover,
+  border: `1px solid ${theme.palette.divider}`,
+  borderLeft: `4px solid ${triggered ? theme.palette.error.light : theme.palette.primary.light}`,
 }))
 
 const Alerts = () => {
@@ -575,7 +557,7 @@ const Alerts = () => {
     return (
       <IconComponent 
         sx={{ 
-          color: triggered ? '#f44336' : (type === 'price_above' ? '#4caf50' : '#f44336'),
+          color: triggered ? 'error.main' : (type === 'price_above' ? 'success.main' : 'error.main'),
           fontSize: '2rem'
         }} 
       />
@@ -624,13 +606,7 @@ const Alerts = () => {
           size="large"
           startIcon={<AddIcon />}
           onClick={() => setDialogOpen(true)}
-          sx={{
-            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-            boxShadow: '0 3px 5px 2px rgba(33, 203, 243, .3)',
-            '&:hover': {
-              background: 'linear-gradient(45deg, #1976D2 30%, #1E88E5 90%)',
-            }
-          }}
+          sx={{ boxShadow: 'none' }}
         >
           New Alert
         </Button>
@@ -648,12 +624,12 @@ const Alerts = () => {
         {/* Alert Cards */}
         <Grid item xs={12} lg={9}>
           {alerts.length === 0 ? (
-            <Card sx={{ textAlign: 'center', p: 4, background: 'linear-gradient(135deg, #f8f9fa 0%, #fff 100%)' }}>
+            <Card sx={{ textAlign: 'center', p: 4, backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
               <ShowChartIcon sx={{ fontSize: '4rem', color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h5" color="textSecondary" gutterBottom>
+              <Typography variant="h5" color="text.secondary" gutterBottom>
                 No alerts configured
               </Typography>
-              <Typography color="textSecondary" sx={{ mb: 3 }}>
+              <Typography color="text.secondary" sx={{ mb: 3 }}>
                 Create your first price alert to monitor your favorite stocks!
               </Typography>
               <Button 
@@ -759,20 +735,7 @@ const Alerts = () => {
                             />
                           </Box>
 
-                          {/* Triggered Overlay Effect */}
-                          {alert.triggered && (
-                            <Box
-                              sx={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                height: '4px',
-                                background: 'linear-gradient(90deg, #f44336, #ff9800, #f44336)',
-                                animation: `${pulseAnimation} 2s infinite`,
-                              }}
-                            />
-                          )}
+              {/* Trigger indicator removed for cleaner, standard look */}
                         </CardContent>
                       </AlertCard>
                     </Grow>
@@ -785,31 +748,27 @@ const Alerts = () => {
 
         {/* Statistics Panel */}
         <Grid item xs={12} lg={3}>
-          <Card sx={{ 
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
-            mb: 2
-          }}>
+      <Card sx={{ backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider', mb: 2 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ color: 'white' }}>
+        <Typography variant="h6" gutterBottom>
                 Alert Statistics
               </Typography>
               <Box display="flex" flexDirection="column" gap={2}>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography sx={{ color: 'rgba(255,255,255,0.9)' }}>Total Alerts</Typography>
+          <Typography color="text.secondary">Total Alerts</Typography>
                   <Typography variant="h4" fontWeight="bold">
                     {alerts.length}
                   </Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography sx={{ color: 'rgba(255,255,255,0.9)' }}>Active</Typography>
-                  <Typography variant="h4" fontWeight="bold" sx={{ color: '#4caf50' }}>
+          <Typography color="text.secondary">Active</Typography>
+          <Typography variant="h4" fontWeight="bold" sx={{ color: 'success.main' }}>
                     {alerts.filter(alert => alert.enabled).length}
                   </Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography sx={{ color: 'rgba(255,255,255,0.9)' }}>Triggered</Typography>
-                  <Typography variant="h4" fontWeight="bold" sx={{ color: '#f44336' }}>
+          <Typography color="text.secondary">Triggered</Typography>
+          <Typography variant="h4" fontWeight="bold" sx={{ color: 'error.main' }}>
                     {alerts.filter(alert => alert.triggered).length}
                   </Typography>
                 </Box>
@@ -853,9 +812,7 @@ const Alerts = () => {
 
       {/* Create Alert Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-          Create New Price Alert
-        </DialogTitle>
+  <DialogTitle>Create New Price Alert</DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
@@ -929,9 +886,7 @@ const Alerts = () => {
             onClick={handleCreateAlert}
             variant="contained"
             disabled={!alertForm.symbol || !alertForm.target_price}
-            sx={{
-              background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-            }}
+            sx={{ boxShadow: 'none' }}
           >
             Create Alert
           </Button>

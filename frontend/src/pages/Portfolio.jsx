@@ -549,6 +549,7 @@ import {
 } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 import PortfolioDetails from './PortfolioDetails'
+import { useStockLive } from '../contexts/StockLiveProvider'
 
 const Portfolio = () => {
   const [portfolios, setPortfolios] = useState([])
@@ -564,10 +565,46 @@ const Portfolio = () => {
   const [editingPortfolio, setEditingPortfolio] = useState(null)
   const [menuAnchorEl, setMenuAnchorEl] = useState(null)
   const [menuPortfolio, setMenuPortfolio] = useState(null)
+  const { stockData } = useStockLive()
 
-  // Portfolio stats
-  const totalValue = portfolios.reduce((sum, portfolio) => sum + (portfolio.total_value || 0), 0)
-  const totalGainLoss = portfolios.reduce((sum, portfolio) => sum + (portfolio.total_gain_loss || 0), 0)
+  // Build a quick lookup for live prices
+  const priceBySymbol = React.useMemo(() => {
+    const map = new Map()
+    ;(stockData || []).forEach((s) => {
+      if (s?.symbol) map.set(String(s.symbol).toUpperCase(), s.latestPrice)
+    })
+    return map
+  }, [stockData])
+
+  const getCurrentNumericPrice = (symbol, fallback) => {
+    const key = String(symbol || '').toUpperCase()
+    const live = priceBySymbol.get(key)
+    if (typeof live === 'number') return live
+    const fb = parseFloat(fallback)
+    return Number.isFinite(fb) ? fb : undefined
+  }
+
+  const computePortfolioTotals = (p) => {
+    if (!p?.stocks?.length) return { totalValue: 0, totalGainLoss: 0 }
+    return p.stocks.reduce(
+      (acc, s) => {
+        const shares = parseFloat(s.shares)
+        const purchase = parseFloat(s.purchase_price)
+        const current = getCurrentNumericPrice(s.symbol, s.current_price) ?? purchase
+        if (!Number.isFinite(shares) || !Number.isFinite(purchase) || !Number.isFinite(current)) {
+          return acc
+        }
+        acc.totalValue += shares * current
+        acc.totalGainLoss += (current - purchase) * shares
+        return acc
+      },
+      { totalValue: 0, totalGainLoss: 0 }
+    )
+  }
+
+  // Live portfolio stats (sum computed live totals across portfolios)
+  const totalValue = portfolios.reduce((sum, p) => sum + computePortfolioTotals(p).totalValue, 0)
+  const totalGainLoss = portfolios.reduce((sum, p) => sum + computePortfolioTotals(p).totalGainLoss, 0)
   const totalStocks = portfolios.reduce((sum, portfolio) => sum + (portfolio.stocks?.length || 0), 0)
 
   useEffect(() => {
@@ -724,15 +761,10 @@ const Portfolio = () => {
 
   // Show portfolio list view
   return (
-    <Box sx={{
-      background: (theme) => `linear-gradient(180deg, ${theme.palette.background.default} 0%, ${theme.palette.mode === 'light' ? '#f8fafc' : '#0b1220'} 100%)`,
-      p: { xs: 1, md: 2 },
-      borderRadius: 2
-    }}>
+    <Box sx={{ p: { xs: 1, md: 2 }, borderRadius: 2 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>Portfolio Management</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 600 }}>
             Track performance and manage your investment portfolios
           </Typography>
         </Box>
@@ -741,7 +773,8 @@ const Portfolio = () => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => openPortfolioDialog()}
-            sx={{ borderRadius: 2, px: 2, boxShadow: 2 }}
+            size="large"
+            sx={{ borderRadius: 2, px: 3, boxShadow: 2 }}
           >
             New Portfolio
           </Button>
@@ -752,16 +785,16 @@ const Portfolio = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} mb={4}>
-        <Grid item xs={12} md={4}>
-          <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+  <Grid item xs={12} md={4}>
+    <Card sx={{ borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+      <Typography color="text.secondary" gutterBottom sx={{ fontSize: '0.95rem' }}>
                     Total Portfolio Value
                   </Typography>
-                  <Typography variant="h5" component="div" sx={{ fontWeight: 700 }}>
-                    ${totalValue.toLocaleString()}
+                  <Typography variant="h4" component="div" sx={{ fontWeight: 700 }}>
+                    ${Number(totalValue).toLocaleString()}
                   </Typography>
                 </Box>
                 <Box sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', p: 1, borderRadius: 2 }}>
@@ -772,11 +805,11 @@ const Portfolio = () => {
           </Card>
         </Grid>
         <Grid item xs={12} md={4}>
-          <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+    <Card sx={{ borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+      <Typography color="text.secondary" gutterBottom sx={{ fontSize: '0.95rem' }}>
                     Total Gain/Loss
                   </Typography>
                   <Box display="flex" alignItems="center" gap={1}>
@@ -786,12 +819,12 @@ const Portfolio = () => {
                       <TrendingDownIcon color="error" fontSize="small" />
                     )}
                     <Typography 
-                      variant="h5" 
+                      variant="h4" 
                       component="div"
-                      color={(totalGainLoss || 0) >= 0 ? 'success.main' : 'error.main'}
+                      color={Number(totalGainLoss || 0) >= 0 ? 'success.main' : 'error.main'}
                       sx={{ fontWeight: 700 }}
                     >
-                      {(totalGainLoss || 0) >= 0 ? '+' : ''}${totalGainLoss.toLocaleString()}
+                      {Number(totalGainLoss || 0) >= 0 ? '+' : ''}${Number(totalGainLoss || 0).toLocaleString()}
                     </Typography>
                   </Box>
                 </Box>
@@ -803,15 +836,15 @@ const Portfolio = () => {
           </Card>
         </Grid>
         <Grid item xs={12} md={4}>
-          <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+    <Card sx={{ borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+      <Typography color="text.secondary" gutterBottom sx={{ fontSize: '0.95rem' }}>
                     Total Stocks
                   </Typography>
-                  <Typography variant="h5" component="div" sx={{ fontWeight: 700 }}>
-                    {totalStocks}
+                  <Typography variant="h4" component="div" sx={{ fontWeight: 700 }}>
+                    {Number(totalStocks)}
                   </Typography>
                 </Box>
                 <Box sx={{ bgcolor: 'warning.main', color: 'warning.contrastText', p: 1, borderRadius: 2 }}>
@@ -827,11 +860,11 @@ const Portfolio = () => {
       <Grid container spacing={3}>
         {portfolios.map((portfolio) => (
           <Grid item xs={12} md={6} lg={4} key={portfolio.id}>
-            <Card sx={{ height: '100%', borderRadius: 3, boxShadow: 3, transition: 'transform 0.2s ease, box-shadow 0.2s ease', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}>
+            <Card sx={{ height: '100%', borderRadius: 3, boxShadow: 3, border: '1px solid', borderColor: 'divider', transition: 'transform 0.2s ease, box-shadow 0.2s ease', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}>
               <CardActionArea onClick={() => handlePortfolioClick(portfolio)}>
                 <CardContent>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                    <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                    <Typography variant="h5" component="div" sx={{ flexGrow: 1, fontWeight: 700 }}>
                       {portfolio.name}
                     </Typography>
                     <Box onClick={(e) => e.stopPropagation()}>
@@ -841,38 +874,41 @@ const Portfolio = () => {
                     </Box>
                   </Box>
                   
-                  <Typography color="textSecondary" variant="body2" mb={2} sx={{ minHeight: '40px' }}>
+                  <Typography color="text.secondary" variant="body1" mb={2} sx={{ minHeight: '40px' }}>
                     {portfolio.description || 'No description'}
                   </Typography>
                   
+                  {(() => { const liveTotals = computePortfolioTotals(portfolio); return (
+                  <>
                   <Box mb={2}>
-                    <Typography variant="body2" color="textSecondary" gutterBottom>
+                    <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: '0.95rem' }}>
                       Portfolio Value
                     </Typography>
-                    <Typography variant="h6" component="div" sx={{ fontWeight: 700 }}>
-                      ${(portfolio.total_value || 0).toLocaleString()}
+                    <Typography variant="h5" component="div" sx={{ fontWeight: 700 }}>
+            ${Number(liveTotals.totalValue || 0).toLocaleString()}
                     </Typography>
                   </Box>
-
                   <Box mb={2}>
-                    <Typography variant="body2" color="textSecondary" gutterBottom>
+                    <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: '0.95rem' }}>
                       Gain/Loss
                     </Typography>
                     <Typography 
-                      variant="h6" 
+                      variant="h5" 
                       component="div"
-                      color={(portfolio.total_gain_loss || 0) >= 0 ? 'success.main' : 'error.main'}
+            color={Number(liveTotals.totalGainLoss || 0) >= 0 ? 'success.main' : 'error.main'}
                       sx={{ fontWeight: 700 }}
                     >
-                      {(portfolio.total_gain_loss || 0) >= 0 ? '+' : ''}${(portfolio.total_gain_loss || 0).toLocaleString()}
+            {Number(liveTotals.totalGainLoss || 0) >= 0 ? '+' : ''}${Number(liveTotals.totalGainLoss || 0).toLocaleString()}
                     </Typography>
                   </Box>
+                  </>
+                  )})()}
 
                   <Divider sx={{ my: 1 }} />
 
                   <Box display="flex" justifyContent="space-between" alignItems="center">
                     <Chip label={`${portfolio.stocks?.length || 0} stocks`} size="small" color="default" variant="outlined" />
-                    <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+                    <Typography variant="body1" color="primary" sx={{ fontWeight: 700 }}>
                       View details →
                     </Typography>
                   </Box>
@@ -896,10 +932,10 @@ const Portfolio = () => {
 
       {portfolios.length === 0 && (
         <Box textAlign="center" py={8}>
-          <Typography variant="h6" color="textSecondary" gutterBottom>
+          <Typography variant="h6" color="text.secondary" gutterBottom>
             No portfolios found
           </Typography>
-          <Typography variant="body2" color="textSecondary" mb={3}>
+          <Typography variant="body1" color="text.secondary" mb={3}>
             Create your first portfolio to get started
           </Typography>
           <Button
