@@ -46,6 +46,8 @@ from .serializers import AlertSerializer
 from django.conf import settings
 from django.core.cache import cache
 import requests
+from django.contrib.auth import get_user_model
+from .email_utils import send_alert_email
 
 
 # List & Create alerts
@@ -167,6 +169,19 @@ def check_alerts(request):
             from django.utils.timezone import now
             alert.triggered_at = now()
             alert.save(update_fields=["triggered", "triggered_at"])
+            # Send email notification (best-effort)
+            try:
+                to_email = getattr(alert.user, 'email', None)
+                if to_email:
+                    send_alert_email(
+                        to_email=to_email,
+                        symbol=alert.symbol,
+                        current_price=float(current_price),
+                        target_price=float(alert.target_price),
+                        alert_type=alert.type,
+                    )
+            except Exception:
+                pass
 
     # Return user's triggered alerts
     triggered = Alert.objects.filter(user=user, triggered=True).order_by("-triggered_at")
@@ -194,6 +209,24 @@ def trigger_alert(request, pk):
         alert.triggered = True
         alert.triggered_at = now()
         alert.save(update_fields=["triggered", "triggered_at"])
+        # Send email notification (best-effort)
+        try:
+            to_email = getattr(alert.user, 'email', None)
+            if to_email:
+                cached_price = cache.get(f"price:{alert.symbol}")
+                if isinstance(cached_price, dict):
+                    cached_current = cached_price.get("latestPrice")
+                else:
+                    cached_current = cached_price
+                send_alert_email(
+                    to_email=to_email,
+                    symbol=alert.symbol,
+                    current_price=float(cached_current or 0.0),
+                    target_price=float(alert.target_price),
+                    alert_type=alert.type,
+                )
+        except Exception:
+            pass
 
     serializer = AlertSerializer(alert)
     return Response(serializer.data)

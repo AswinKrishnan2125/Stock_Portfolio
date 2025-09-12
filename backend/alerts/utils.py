@@ -95,6 +95,7 @@ from django.conf import settings
 from django.core.cache import cache
 from .models import Alert
 from channels.db import database_sync_to_async
+from .email_utils import send_alert_email
 
 FINNHUB_WS_URL = f"wss://ws.finnhub.io?token={settings.FINNHUB_API_KEY}"
 
@@ -165,6 +166,19 @@ async def price_stream(user):
                             alert.triggered = True
                             alert.triggered_at = now()
                             await database_sync_to_async(alert.save)()
+                            # Best-effort email notification
+                            try:
+                                to_email = getattr(alert.user, 'email', None)
+                                if to_email:
+                                    send_alert_email(
+                                        to_email=to_email,
+                                        symbol=alert.symbol,
+                                        current_price=float(current_price),
+                                        target_price=float(alert.target_price),
+                                        alert_type=alert.type,
+                                    )
+                            except Exception:
+                                pass
                         
                         print(f"Checking alert: symbol={symbol}, type={alert.type}, current_price={current_price}, target={target}")
 
