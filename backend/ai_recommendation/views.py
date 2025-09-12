@@ -10,8 +10,12 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from portfolio.models import Portfolio, Stock, InterestedStock, HistoricalPrice
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3.1:free")
+from django.conf import settings
+
+OPENROUTER_API_KEY = getattr(settings, "OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
+OPENROUTER_MODEL = getattr(settings, "OPENROUTER_MODEL", os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3.1:free"))
+OPENROUTER_REFERER = getattr(settings, "OPENROUTER_REFERER", "http://localhost:8000")
+OPENROUTER_TITLE = getattr(settings, "OPENROUTER_TITLE", "StockTracker")
 RECS_CACHE_TTL = int(os.getenv("RECS_CACHE_TTL", "600"))  # 10 minutes default
 
 
@@ -99,10 +103,15 @@ def _build_prompt(user):
 
 def _call_openrouter(system_prompt, user_payload):
     try:
+        if not OPENROUTER_API_KEY:
+            return {"error": "Missing OPENROUTER_API_KEY"}
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            # Optional but recommended by OpenRouter for routing/metrics
+            "HTTP-Referer": OPENROUTER_REFERER,
+            "X-Title": OPENROUTER_TITLE,
         }
         body = {
             "model": OPENROUTER_MODEL,
@@ -111,6 +120,8 @@ def _call_openrouter(system_prompt, user_payload):
                 {"role": "user", "content": json.dumps(user_payload)},
             ],
             "temperature": 0.3,
+            # Encourage strict JSON from supported models
+            "response_format": {"type": "json_object"},
         }
         resp = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -120,7 +131,9 @@ def _call_openrouter(system_prompt, user_payload):
         )
         resp.raise_for_status()
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"].get("content")
+        if not content:
+            return {"error": "Empty response content from model"}
         # Some models wrap JSON in code fences; strip if present
         txt = content.strip()
         if txt.startswith("```"):
@@ -137,8 +150,9 @@ def _call_openrouter(system_prompt, user_payload):
             if start != -1 and end != -1 and end > start:
                 return json.loads(txt[start : end + 1])
             raise
-    except Exception:
-        return None
+    except Exception as e:
+        # Bubble up error message to help diagnose instead of silent None
+        return {"error": str(e)}
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -171,22 +185,46 @@ class RecommendationView(APIView):
 
             # Normalize to a flat list expected by frontend while preserving sections
             now_iso = datetime.utcnow().isoformat() + "Z"
-            if result is None:
+            # If model call failed, attach error but avoid silent rule-based fallback unless forced
+            if result is None or (isinstance(result, dict) and result.get("error")):
                 holdings_list = []
                 suggestions_list = []
+                model_error = result.get("error") if isinstance(result, dict) else "Model returned no result"
             else:
-                holdings_list = result.get("holdings", [])
-                suggestions_list = result.get("suggestions", [])
+                # Accept alternative shapes from models and normalize
+                if isinstance(result, dict) and isinstance(result.get("recommendations"), list):
+                    flat = result.get("recommendations", [])
+                    holdings_list = flat
+                    suggestions_list = []
+                else:
+                    holdings_list = result.get("holdings", [])
+                    suggestions_list = result.get("suggestions", [])
+                model_error = None
+
+            live_prices_snapshot = user_payload.get("live_prices", {})
+
+            def _to_float(val):
+                try:
+                    if val is None:
+                        return None
+                    return float(val)
+                except Exception:
+                    return None
 
             def _norm(item, section):
+                sym = item.get("symbol")
+                cp = item.get("current_price")
+                if (cp is None) and sym:
+                    cp = live_prices_snapshot.get(sym)
+                tp = item.get("target_price")
                 return {
-                    "id": f"{section}:{item.get('symbol','?')}",
+                    "id": f"{section}:{sym or '?'}",
                     "section": section,
-                    "symbol": item.get("symbol"),
+                    "symbol": sym,
                     "company_name": item.get("company_name"),
                     "recommendation": item.get("recommendation", "HOLD"),
-                    "target_price": item.get("target_price"),
-                    "current_price": item.get("current_price"),
+                    "target_price": _to_float(tp),
+                    "current_price": _to_float(cp),
                     "risk_level": item.get("risk_level", "MEDIUM"),
                     "confidence_score": item.get("confidence_score", 50),
                     "time_horizon": item.get("time_horizon", "3M"),
@@ -199,6 +237,7 @@ class RecommendationView(APIView):
             ]
 
             # If model failed or returned nothing, build a rule-based fallback with real signals
+            source = "model"
             if not recommendations:
                 # Holdings from user payload; interests list
                 hp = user_payload.get("portfolio_holdings", [])
@@ -272,17 +311,23 @@ class RecommendationView(APIView):
                         "reasoning": sig["reason"],
                         "created_at": now_iso,
                     })
+                source = "fallback"
 
             # compute potential_return if possible
             for rec in recommendations:
                 try:
                     tp = rec.get("target_price")
                     cp = rec.get("current_price")
-                    rec["potential_return"] = round(((tp - cp) / cp) * 100, 2) if tp and cp else 0
+                    if tp is not None and cp is not None and cp != 0:
+                        rec["potential_return"] = round(((tp - cp) / cp) * 100, 2)
+                    else:
+                        rec["potential_return"] = 0
                 except Exception:
                     rec["potential_return"] = 0
 
-            payload = {"recommendations": recommendations, "cached": False, "generated_at": now_iso}
+            payload = {"recommendations": recommendations, "cached": False, "generated_at": now_iso, "source": source}
+            if model_error:
+                payload["model_error"] = model_error
             cache.set(cache_key, payload, timeout=RECS_CACHE_TTL)
             return JsonResponse(payload, safe=False)
         except Exception as e:

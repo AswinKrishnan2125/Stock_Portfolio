@@ -5,6 +5,7 @@ import {
   Grid,
   Card,
   CardContent,
+  Avatar,
   Chip,
   Typography,
   CircularProgress,
@@ -18,13 +19,30 @@ import axios from 'axios'
 import StockSearch from "./StockSearch";
 import { useAuth } from "../contexts/AuthContext";
 import { useStockLive } from "../contexts/StockLiveProvider";
+import { useTheme } from '@mui/material/styles';
 
 const Dashboard = () => {
+  const theme = useTheme();
   const { stockData, loading, interestedSymbols, refreshPrices } = useStockLive();
   React.useEffect(() => {
     console.log('Dashboard stockData:', stockData);
     console.log('Dashboard interestedSymbols:', interestedSymbols);
   }, [stockData, interestedSymbols]);
+
+  const avatarBg = React.useCallback((sym) => {
+    const s = String(sym || '');
+    const palette = [
+      theme.palette.primary.main,
+      theme.palette.secondary.main,
+      theme.palette.success.main,
+      theme.palette.warning.main,
+      theme.palette.error.main,
+      (theme.palette.info && theme.palette.info.main) || theme.palette.primary.light,
+    ];
+    let hash = 0;
+    for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+    return palette[hash % palette.length];
+  }, [theme]);
 
   const formatPrice = (price) =>
     new Intl.NumberFormat("en-US", {
@@ -104,17 +122,18 @@ const Dashboard = () => {
           <Grid container spacing={3}>
   {stockData.length > 0 ? (
     stockData.map((stock) => (
-      <Grid item xs={12} sm={6} md={4} lg={3} key={stock.symbol}>
+      <Grid item xs={12} sm={6} md={6} lg={4} key={stock.symbol}>
         <Card
           variant="outlined"
           sx={{
-            borderRadius: 3,
+            borderRadius: 2,
             boxShadow: 3,
             transition: "0.3s",
             "&:hover": { boxShadow: 6 },
+            minHeight: 180,
           }}
         >
-          <CardContent>
+          <CardContent sx={{ p: 2.5 }}>
             {/* Symbol + Live */}
             <Box
               display="flex"
@@ -122,9 +141,22 @@ const Dashboard = () => {
               justifyContent="space-between"
               mb={1.5}
             >
-              <Typography variant="h6" fontWeight="bold">
-                {stock.symbol}
-              </Typography>
+              <Box display="flex" alignItems="center" gap={1.25}>
+                <Avatar
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    bgcolor: avatarBg(stock.symbol),
+                    color: theme.palette.getContrastText(avatarBg(stock.symbol)),
+                    fontSize: 16,
+                  }}
+                >
+                  {String(stock.symbol || '?').slice(0, 3)}
+                </Avatar>
+                <Typography variant="h5" fontWeight="bold">
+                  {stock.symbol}
+                </Typography>
+              </Box>
               <Box display="flex" alignItems="center" gap={1}>
                 {isMarketLiveIST() ? (
                   <Chip
@@ -164,7 +196,7 @@ const Dashboard = () => {
             </Box>
 
             {/* Current Value */}
-            <Typography variant="h4" fontWeight="bold" gutterBottom>
+            <Typography variant="h3" fontWeight="bold" gutterBottom>
               {typeof stock.latestPrice === "number"
                 ? formatPrice(stock.latestPrice)
                 : "N/A"}

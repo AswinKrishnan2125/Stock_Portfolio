@@ -13,6 +13,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-your-secret-key-here')
 ALPHAVANTAGE_API_KEY = config("ALPHAVANTAGE_API_KEY")
 FINNHUB_API_KEY = config("FINNHUB_API_KEY")
+# OpenRouter (AI) settings
+OPENROUTER_API_KEY = config('OPENROUTER_API_KEY', default='')
+OPENROUTER_MODEL = config('OPENROUTER_MODEL', default='deepseek/deepseek-chat-v3.1:free')
+OPENROUTER_REFERER = config('OPENROUTER_REFERER', default='http://localhost:8000')
+OPENROUTER_TITLE = config('OPENROUTER_TITLE', default='StockTracker')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
